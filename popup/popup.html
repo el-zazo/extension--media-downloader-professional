@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Media Downloader Professional</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- ===== HEADER ===== -->
+      <div class="header">
+        <div class="header-title">Media Downloader Professional</div>
+      </div>
+
+      <!-- ===== TABS NAVIGATION ===== -->
+      <div class="tabs-container">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="detected">Detected Media</button>
+          <button class="tab-btn" data-tab="saved">Saved Media</button>
+        </div>
+      </div>
+
+      <!-- ===== DETECTED MEDIA TAB ===== -->
+      <div class="tab-content active" data-tab="detected">
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div class="filter-label">Filter:</div>
+          <select id="mediaFilter" class="filter-select">
+            <optgroup label="Categories">
+              <option value="all">All Media</option>
+              <option value="images">All Images</option>
+              <option value="audio">All Audio</option>
+              <option value="video">All Videos</option>
+            </optgroup>
+            <optgroup label="File Types" id="fileTypeOptions">
+              <!-- File type options will be added dynamically -->
+            </optgroup>
+          </select>
+          <div class="media-counter">
+            <span id="filterCount">0</span>
+            <span>medias found</span>
+          </div>
+        </div>
+
+        <!-- Media Content -->
+        <div class="content" id="content">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <div>No media detected on this page.</div>
+            <div style="margin-top: 8px; font-size: 12px">Browse the page to detect media automatically.</div>
+          </div>
+
+          <ul class="media-list" id="mediaList" style="display: none">
+            <!-- Media items will be populated here dynamically -->
+          </ul>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="footer">
+          <div>
+            <span id="mediaCount">0 medias</span>
+          </div>
+          <div class="footer-actions">
+            <button class="footer-btn" id="showInPageBtn">Show in page</button>
+            <div class="tooltip">
+              <button class="footer-btn" id="refreshBtn">Refresh</button>
+              <span class="tooltip-text">Scan page again for media</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SAVED MEDIA TAB ===== -->
+      <div class="tab-content" data-tab="saved">
+        <div class="saved-media-content">
+          <div class="empty-state" id="savedEmptyState">
+            <div class="empty-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                />
+              </svg>
+            </div>
+            <div>No saved media yet.</div>
+            <div style="margin-top: 8px; font-size: 12px">Use the save button to save media for later.</div>
+          </div>
+
+          <ul class="media-list" id="savedMediaList" style="display: none">
+            <!-- Saved media items will be populated here dynamically -->
+          </ul>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="footer">
+          <div>
+            <span id="savedMediaCount">0 saved</span>
+          </div>
+          <div class="footer-actions">
+            <button class="footer-btn" id="clearSavedBtn">Clear All</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODALS ===== -->
+    <!-- Modal for entering custom filename -->
+    <div class="save-modal" id="saveModal">
+      <div class="save-modal-content">
+        <h3>Save Media</h3>
+        <div class="save-modal-url" id="saveModalUrl"></div>
+        <div class="form-group">
+          <label for="customFilename">Filename:</label>
+          <input type="text" id="customFilename" class="filename-input" placeholder="Enter custom filename" />
+        </div>
+        <div class="save-modal-actions">
+          <button id="cancelSaveBtn" class="modal-btn cancel-btn">Cancel</button>
+          <button id="confirmSaveBtn" class="modal-btn save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

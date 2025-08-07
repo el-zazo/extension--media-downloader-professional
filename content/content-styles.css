@@ -1,0 +1,503 @@
+/**
+ * Media Downloader Professional - Content Styles
+ * 
+ * This stylesheet defines the visual appearance of the media panel UI
+ * that is injected into web pages by the content script.
+ * 
+ * Table of Contents:
+ * 1. Tooltip Styles
+ * 2. Custom Scrollbar
+ * 3. Animations
+ * 4. Panel Structure
+ * 5. Panel Header
+ * 6. Panel Content
+ * 7. Media Items
+ * 8. Filter Bar
+ * 9. Footer
+ * 10. Responsive Adjustments
+ * 
+ * @author Media Downloader Professional Team
+ * @version 1.0.0
+ */
+
+/* ==============================
+ * 1. TOOLTIP STYLES
+ * ============================== */
+
+[data-tooltip] {
+  position: relative;
+  cursor: pointer;
+}
+
+[data-tooltip]:before,
+[data-tooltip]:after {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.15s ease;
+  position: absolute;
+  z-index: 2147483647;
+}
+
+[data-tooltip]:before {
+  content: attr(data-tooltip);
+  padding: 6px 10px;
+  min-width: 120px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.2;
+  bottom: 125%;
+  left: 50%;
+  margin-bottom: 5px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+[data-tooltip]:after {
+  content: "";
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  margin-bottom: 0;
+  margin-left: -5px;
+  border-width: 5px 5px 0;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+}
+
+[data-tooltip]:hover:before,
+[data-tooltip]:hover:after {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* ==============================
+ * 2. CUSTOM SCROLLBAR
+ * ============================== */
+
+.vdp-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.vdp-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.vdp-content::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 4px;
+}
+
+.vdp-content::-webkit-scrollbar-thumb:hover {
+  background: #ccc;
+}
+
+/* ==============================
+ * 3. ANIMATIONS
+ * ============================== */
+
+/* Animation for copied notification */
+@keyframes fadeInOut {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) translateX(-50%);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+  90% {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) translateX(-50%);
+  }
+}
+
+.vdp-copied {
+  animation: fadeInOut 2s ease-in-out;
+}
+
+/* ==============================
+ * 4. PANEL STRUCTURE
+ * ============================== */
+
+.vdp-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 380px;
+  max-height: 500px;
+  background: #222;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  z-index: 2147483647;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+  transition: opacity 0.3s ease;
+  color: #eee;
+  display: flex;
+  flex-direction: column;
+  text-align: start;
+  direction: ltr;
+  margin: 0;
+  min-width: 300px;
+}
+
+.vdp-panel.vdp-dragging {
+  transition: none;
+  opacity: 0.9;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  cursor: grabbing;
+}
+
+.vdp-panel.collapsed {
+  height: 48px;
+  overflow: hidden;
+}
+
+/* ==============================
+ * 5. PANEL HEADER
+ * ============================== */
+
+.vdp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #0047ab;
+  color: white;
+  font-weight: 600;
+  cursor: move;
+  user-select: none;
+}
+
+.vdp-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vdp-header-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.vdp-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.vdp-btn {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+  padding: 0;
+}
+
+.vdp-btn:hover {
+  transform: scale(1.2);
+}
+
+.vdp-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ==============================
+ * 6. PANEL CONTENT
+ * ============================== */
+
+.vdp-content {
+  overflow-y: auto;
+  flex: 1;
+  max-height: calc(500px - 48px - 41px - 44px);
+  padding: 0;
+  background: #222;
+}
+
+.vdp-empty {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+}
+
+/* ==============================
+ * 7. MEDIA ITEMS
+ * ============================== */
+
+.vdp-media-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vdp-media-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: background 0.2s;
+}
+
+.vdp-media-item:hover {
+  background: #333;
+}
+
+.vdp-media-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0047ab;
+  flex-shrink: 0;
+}
+
+.vdp-media-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.vdp-media-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.vdp-media-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vdp-media-url {
+  color: #aaa;
+  font-size: 12px;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vdp-media-meta {
+  display: flex;
+  column-gap: 8px;
+  font-size: 11px;
+  color: #999;
+  align-items: center;
+}
+
+.vdp-media-format {
+  background: rgba(0, 71, 171, 0.2);
+  color: #0047ab;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vdp-media-size {
+  flex: none;
+}
+
+.vdp-media-time {
+  flex: none;
+}
+
+.vdp-media-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vdp-action-btn {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+  border-radius: 4px;
+}
+
+.vdp-action-btn:hover {
+  background: #444;
+  color: white;
+}
+
+.vdp-action-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.vdp-copied {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 2147483647;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.vdp-copied.show {
+  opacity: 1;
+}
+
+.vdp-badge {
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  background: #ff5722;
+  color: white;
+  font-size: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 17%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Additional scrollbar styling for dark theme */
+.vdp-content::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.vdp-content::-webkit-scrollbar-thumb {
+  background: #333;
+}
+
+.vdp-content::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* ==============================
+ * 8. FILTER BAR
+ * ============================== */
+
+.vdp-filter-bar {
+  display: flex;
+  padding: 10px 12px;
+  background: #2a2a2a;
+  border-bottom: 1px solid #333;
+  gap: 12px;
+  align-items: center;
+  user-select: none;
+}
+
+.vdp-filter-label {
+  color: #ddd;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.vdp-filter-select {
+  background: #333;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  flex: 1;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+  min-width: 120px;
+  max-width: 180px;
+}
+
+.vdp-filter-select:hover {
+  border-color: #555;
+}
+
+.vdp-filter-select:focus {
+  border-color: #0047ab;
+  box-shadow: 0 0 0 1px rgba(0, 71, 171, 0.3);
+}
+
+.vdp-filter-select option,
+.vdp-filter-select optgroup {
+  background-color: #333;
+  color: #fff;
+}
+
+.vdp-media-counter {
+  margin-left: auto;
+  color: #ccc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.vdp-counter-count {
+  font-weight: bold;
+  color: #fff;
+}
+
+/* ==============================
+ * 10. RESPONSIVE ADJUSTMENTS
+ * ============================== */
+
+@media (max-width: 480px) {
+  .vdp-filter-bar {
+    flex-wrap: wrap;
+  }
+
+  .vdp-filter-select {
+    max-width: none;
+  }
+
+  .vdp-media-counter {
+    margin-left: 0;
+    width: 100%;
+    margin-top: 5px;
+  }
+}
+
+/* ==============================
+ * 9. FOOTER
+ * ============================== */
+
+.vdp-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #333;
+  border-top: 1px solid #444;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.vdp-media-count {
+  font-weight: 500;
+}
