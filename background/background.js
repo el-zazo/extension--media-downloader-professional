@@ -30,7 +30,11 @@ const MAX_CACHED_URLS = 1000; // Maximum number of URLs to keep in memory
 const CLEANUP_THRESHOLD = 500; // Number of URLs to remove when cache is full
 
 // In-memory cache to track detected medias and avoid duplicates
+// This Set is restored from storage on service worker restart
 const detectedMedias = new Set();
+
+// Storage key for persisting the detected media cache
+const CACHE_STORAGE_KEY = "detectedMediaCache";
 
 /**
  * ==========================================
@@ -321,6 +325,7 @@ const MediaDetector = {
   
   /**
    * Adds a URL to the media cache and manages cache size
+   * Also persists the cache to storage for service worker restart recovery
    * 
    * @param {string} url - The URL to add to the cache
    */
@@ -333,6 +338,46 @@ const MediaDetector = {
       const oldUrls = Array.from(detectedMedias).slice(0, CLEANUP_THRESHOLD);
       oldUrls.forEach((oldUrl) => detectedMedias.delete(oldUrl));
       utils.log(`Cleaned up ${CLEANUP_THRESHOLD} old URLs from cache`, "info");
+    }
+
+    // Persist cache to storage (debounced via microtask to avoid excessive writes)
+    MediaDetector.persistCache();
+  },
+
+  /**
+   * Persists the in-memory cache to chrome.storage.local
+   * so it can be restored when the service worker restarts.
+   * Uses a short debounce (500ms) to balance performance vs. data safety.
+   */
+  persistCache: (() => {
+    let pendingTimeout = null;
+    return () => {
+      if (pendingTimeout) clearTimeout(pendingTimeout);
+      pendingTimeout = setTimeout(() => {
+        try {
+          const cacheArray = Array.from(detectedMedias);
+          chrome.storage.local.set({ [CACHE_STORAGE_KEY]: cacheArray });
+          utils.log(`Persisted ${cacheArray.length} URLs to cache storage`, "info");
+        } catch (error) {
+          utils.log(`Error persisting cache: ${error.message}`, "error");
+        }
+        pendingTimeout = null;
+      }, 500); // Reduced debounce: 500ms for better data safety on SW restart
+    };
+  })(),
+
+  /**
+   * Restores the in-memory cache from chrome.storage.local
+   * Called on service worker startup to avoid re-processing already detected URLs
+   */
+  restoreCache: async () => {
+    try {
+      const result = await chrome.storage.local.get([CACHE_STORAGE_KEY]);
+      const cachedUrls = result[CACHE_STORAGE_KEY] || [];
+      cachedUrls.forEach((url) => detectedMedias.add(url));
+      utils.log(`Restored ${cachedUrls.length} URLs from cache storage`, "info");
+    } catch (error) {
+      utils.log(`Error restoring cache: ${error.message}`, "error");
     }
   },
   
@@ -388,6 +433,7 @@ const MediaDetector = {
 
   /**
    * Clears all detected media items for a specific tab
+   * Also removes the tab's URLs from the in-memory dedup Set
    * 
    * @param {number} tabId - The ID of the tab to clear media for
    * @returns {Promise<void>}
@@ -402,12 +448,25 @@ const MediaDetector = {
       const result = await chrome.storage.local.get(["medias"]);
       const medias = result.medias || {};
       
-      // Remove media items for this tab
+      // Remove the tab's URLs from the in-memory dedup Set so they can be re-detected
+      if (medias[tabId] && Array.isArray(medias[tabId])) {
+        medias[tabId].forEach((item) => {
+          if (item && item.url) {
+            detectedMedias.delete(item.url);
+          }
+        });
+        utils.log(`Removed ${medias[tabId].length} URLs from dedup cache for tab ${tabId}`, "info");
+      }
+      
+      // Remove media items for this tab from storage
       if (medias[tabId]) {
         delete medias[tabId];
         await chrome.storage.local.set({ medias });
         utils.log(`Cleared media items for tab ${tabId}`, "info");
       }
+
+      // Persist the updated dedup cache
+      MediaDetector.persistCache();
     } catch (error) {
       utils.log(`Error clearing tab medias: ${error.message}`, "error");
     }
@@ -442,10 +501,16 @@ const MessageHandler = {
       
       switch (message.action) {
         case "getMedias":
-          return MessageHandler.handleGetMedias(sendResponse);
+          return MessageHandler.handleGetMedias(message, sendResponse);
           
         case "downloadMedia":
           return MessageHandler.handleDownloadMedia(message, sendResponse);
+        
+        case "clearMedias":
+          return MessageHandler.handleClearMedias(message, sendResponse);
+        
+        case "rescanTab":
+          return MessageHandler.handleRescanTab(message, sendResponse);
           
         default:
           utils.log(`Unknown message action: ${message.action}`, "warn");
@@ -461,19 +526,84 @@ const MessageHandler = {
   
   /**
    * Handles requests for media items from popup
+   * Filters by tabId if provided to avoid sending unnecessary data
    * 
+   * @param {Object} message - The message object (may contain tabId)
    * @param {Function} sendResponse - Function to send a response
    * @returns {boolean} - True to indicate async response
    */
-  handleGetMedias: (sendResponse) => {
+  handleGetMedias: (message, sendResponse) => {
     chrome.storage.local
       .get(["medias"])
       .then((result) => {
-        sendResponse({ medias: result.medias || {} });
+        const allMedias = result.medias || {};
+        // If tabId is specified, only return media for that tab
+        if (message && message.tabId) {
+          const tabMedias = allMedias[message.tabId] || [];
+          sendResponse({ medias: { [message.tabId]: tabMedias } });
+        } else {
+          sendResponse({ medias: allMedias });
+        }
       })
       .catch((error) => {
         utils.log(`Error getting medias: ${error.message}`, "error");
         sendResponse({ error: error.message });
+      });
+    return true; // Indicates async response
+  },
+  
+  /**
+   * Handles clearMedias requests from content scripts
+   * Clears media for a specific tab
+   * 
+   * @param {Object} message - The message object (may contain tabId)
+   * @param {Function} sendResponse - Function to send a response
+   * @returns {boolean} - True to indicate async response
+   */
+  handleClearMedias: (message, sendResponse) => {
+    if (!message || !message.tabId) {
+      utils.log("clearMedias request missing tabId", "error");
+      sendResponse({ success: false, error: "Missing tabId" });
+      return false;
+    }
+    
+    MediaDetector.clearTabMedias(message.tabId)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        utils.log(`Error clearing medias: ${error.message}`, "error");
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Indicates async response
+  },
+  
+  /**
+   * Handles rescanTab requests from content scripts.
+   * Clears the dedup cache for a specific tab's URLs so they can be re-detected.
+   * 
+   * @param {Object} message - The message object (must contain tabId)
+   * @param {Function} sendResponse - Function to send a response
+   * @returns {boolean} - True to indicate async response
+   */
+  handleRescanTab: (message, sendResponse) => {
+    if (!message || !message.tabId) {
+      utils.log("rescanTab request missing tabId", "error");
+      sendResponse({ success: false, error: "Missing tabId" });
+      return false;
+    }
+    
+    const tabId = message.tabId;
+    
+    // Clear the tab's media from storage and dedup Set
+    MediaDetector.clearTabMedias(tabId)
+      .then(() => {
+        utils.log(`Rescan: cleared dedup cache for tab ${tabId}`, "info");
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        utils.log(`Error during rescan clear: ${error.message}`, "error");
+        sendResponse({ success: false, error: error.message });
       });
     return true; // Indicates async response
   },
@@ -529,6 +659,15 @@ const initializeExtension = () => {
     });
     utils.log("Tab removal listener registered", "info");
 
+    // Clear media cache when a tab navigates to a new page
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (changeInfo.status === "loading" && changeInfo.url) {
+        MediaDetector.clearTabMedias(tabId);
+        utils.log(`Tab ${tabId} navigated to new URL, cleared media cache`, "info");
+      }
+    });
+    utils.log("Tab navigation listener registered", "info");
+
     // Set up message handler for communication
     chrome.runtime.onMessage.addListener(MessageHandler.handleMessage);
     utils.log("Message listener registered", "info");
@@ -539,5 +678,10 @@ const initializeExtension = () => {
   }
 };
 
-// Start the extension
-initializeExtension();
+/**
+ * Start the extension
+ * First restore the cache from storage, then initialize event listeners
+ */
+MediaDetector.restoreCache().then(() => {
+  initializeExtension();
+});

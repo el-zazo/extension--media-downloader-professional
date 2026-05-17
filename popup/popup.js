@@ -15,6 +15,17 @@ import { utils } from "./utils.js";
 // UI functions
 import { ui } from "./ui.js";
 
+// HTML escaping function to prevent XSS
+const escapeHTML = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
 // Track active filter and tab
 let activeFilter = DEFAULT_FILTER;
 let activeTab = DEFAULT_TAB;
@@ -178,12 +189,12 @@ const createMediaItem = (media, medias) => {
       ${isImage ? ICONS.image : isAudio ? ICONS.audio : ICONS.video}
     </div>
     <div class="media-info">
-      <div class="media-title" title="${media.url}">${title}</div>
-      <div class="media-url" title="${media.url}">${displayUrl}</div>
+      <div class="media-title" title="${escapeHTML(media.url)}">${escapeHTML(title)}</div>
+      <div class="media-url" title="${escapeHTML(media.url)}">${escapeHTML(displayUrl)}</div>
       <div class="media-meta">
-        <span class="media-format">${extension.toUpperCase()}</span>
-        <span class="media-size">${size}</span>
-        <span class="media-time">Added: ${datetime}</span>
+        <span class="media-format">${escapeHTML(extension.toUpperCase())}</span>
+        <span class="media-size">${escapeHTML(size)}</span>
+        <span class="media-time">Added: ${escapeHTML(datetime)}</span>
       </div>
     </div>
     <div class="media-actions">
@@ -248,12 +259,12 @@ const createSavedMediaItem = (media, index) => {
       ${isImage ? ICONS.image : isAudio ? ICONS.audio : ICONS.video}
     </div>
     <div class="media-info">
-      <div class="media-title" title="${media.url}">${title}</div>
-      <div class="media-url" title="${media.url}">${displayUrl}</div>
+      <div class="media-title" title="${escapeHTML(media.url)}">${escapeHTML(title)}</div>
+      <div class="media-url" title="${escapeHTML(media.url)}">${escapeHTML(displayUrl)}</div>
       <div class="media-meta">
-        <span class="media-format">${extension.toUpperCase()}</span>
-        <span class="media-size">${size}</span>
-        <span class="media-time">Saved: ${datetime}</span>
+        <span class="media-format">${escapeHTML(extension.toUpperCase())}</span>
+        <span class="media-size">${escapeHTML(size)}</span>
+        <span class="media-time">Saved: ${escapeHTML(datetime)}</span>
       </div>
     </div>
     <div class="media-actions">

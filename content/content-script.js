@@ -594,26 +594,29 @@ const attachMediaItemEventListeners = (itemElement, media) => {
  */
 const getMediaTypeCount = (media, isImage) => {
   try {
+    let index;
     if (isImage) {
-      return Array.from(detectedMedias.values())
+      index = Array.from(detectedMedias.values())
         .filter((item) => {
           const ext = item.extension?.toLowerCase() || "";
           const mime = item.mime || "";
           return MEDIA_TYPES.IMAGE.includes(ext) || mime.includes("image/");
         })
-        .findIndex((item) => item.url === media.url) + 1;
+        .findIndex((item) => item.url === media.url);
     } else {
-      return Array.from(detectedMedias.values())
+      index = Array.from(detectedMedias.values())
         .filter((item) => {
           const ext = item.extension?.toLowerCase() || "";
           const mime = item.mime || "";
           return !(MEDIA_TYPES.IMAGE.includes(ext) || mime.includes("image/"));
         })
-        .findIndex((item) => item.url === media.url) + 1;
+        .findIndex((item) => item.url === media.url);
     }
+    // findIndex returns -1 if not found; use 1 as fallback to avoid "Video 0" / "Image 0"
+    return index >= 0 ? index + 1 : 1;
   } catch (error) {
     console.error("Error getting media type count:", error);
-    return 0;
+    return 1;
   }
 };
 
@@ -660,26 +663,28 @@ const downloadMedia = (media) => {
     const type = isImage ? "image" : isAudio ? "audio" : "video";
 
     // Generate a sequential number for this type
-    let typeCount = 0;
+    let typeIndex;
     if (isImage) {
-      typeCount =
+      typeIndex =
         Array.from(detectedMedias.values())
           .filter((item) => {
             const ext = item.extension?.toLowerCase() || "";
             const mime = item.mime || "";
             return MEDIA_TYPES.IMAGE.includes(ext) || mime.includes("image/");
           })
-          .findIndex((item) => item.url === media.url) + 1;
+          .findIndex((item) => item.url === media.url);
     } else {
-      typeCount =
+      typeIndex =
         Array.from(detectedMedias.values())
           .filter((item) => {
             const ext = item.extension?.toLowerCase() || "";
             const mime = item.mime || "";
             return !(MEDIA_TYPES.IMAGE.includes(ext) || mime.includes("image/"));
           })
-          .findIndex((item) => item.url === media.url) + 1;
+          .findIndex((item) => item.url === media.url);
     }
+    // findIndex returns -1 if not found; use 1 as fallback to avoid "video_0.mp4"
+    const typeCount = typeIndex >= 0 ? typeIndex + 1 : 1;
 
     const filename = `${type}_${typeCount}.${extension}`;
 
@@ -1227,13 +1232,29 @@ const handleShowPanelMessage = (sendResponse) => {
  */
 const handleRescanPageMessage = (sendResponse) => {
   try {
-    // Clear detected medias and recreate panel
+    // Clear local detected medias and recreate panel
     detectedMedias.clear();
 
     if (mediaPanel) {
       mediaPanel.remove();
       mediaPanel = null;
     }
+
+    // Also clear the background script's dedup cache for this tab
+    // so URLs can be re-detected during the rescan
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length > 0) {
+        const tabId = tabs[0].id;
+        chrome.runtime.sendMessage(
+          { action: "rescanTab", tabId: tabId },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              console.error("Error sending rescanTab message:", chrome.runtime.lastError);
+            }
+          }
+        );
+      }
+    });
 
     initialize();
     sendResponse({ success: true });

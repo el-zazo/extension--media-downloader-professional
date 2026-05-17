@@ -35,4 +35,6 @@ export const ACTIONS = {
   DOWNLOAD_MEDIA: "downloadMedia",
   SHOW_PANEL: "showPanel",
   RESCAN_PAGE: "rescanPage",
+  RESCAN_TAB: "rescanTab",
+  CLEAR_MEDIAS: "clearMedias",
 };
