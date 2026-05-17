@@ -669,9 +669,7 @@ const updateChipCounts = (medias, section) => {
     else videoCount++;
   });
 
-  const sectionAttr = section === "saved" ? '[data-section="saved"]' : ':not([data-section])';
-  const vc = document.querySelector(`.chip-count[data-category="videos"]${sectionAttr}`) ||
-             document.querySelector(`.chip-count[data-category="videos"][data-section="${section}"]`);
+  const vc = document.querySelector(`.chip-count[data-category="videos"][data-section="${section}"]`);
   const ic = document.querySelector(`.chip-count[data-category="images"][data-section="${section}"]`);
   const ac = document.querySelector(`.chip-count[data-category="audio"][data-section="${section}"]`);
   if (vc) vc.textContent = videoCount;
