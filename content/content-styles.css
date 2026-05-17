@@ -232,16 +232,16 @@
   background: #2a2a2a;
   border-bottom: 1px solid #333;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   user-select: none;
-  overflow: visible;
+  flex-wrap: wrap;
 }
 
 .vdp-chip-container {
   display: flex;
   gap: 6px;
-  flex: 1;
-  overflow: visible;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .vdp-chip { position: relative; }
@@ -280,9 +280,7 @@
 
 .vdp-chip-dropdown {
   display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
+  position: fixed;
   margin-top: 4px;
   background: #333;
   border: 1px solid #444;
@@ -291,7 +289,7 @@
   min-width: 140px;
   max-height: 200px;
   overflow-y: auto;
-  z-index: 100;
+  z-index: 2147483647;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 .vdp-chip-dropdown.open { display: block; }
@@ -326,14 +324,15 @@
   transition: all 0.2s;
   white-space: nowrap;
   font-family: inherit;
+  flex-shrink: 0;
 }
 .vdp-reset-btn:hover { background: #444; color: #fff; border-color: #555; }
 
 .vdp-media-counter {
-  margin-left: auto;
   color: #ccc;
   font-size: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .vdp-counter-count { font-weight: bold; color: #fff; }
 
@@ -506,8 +505,6 @@
  * ============================== */
 
 @media (max-width: 480px) {
-  .vdp-filter-bar { flex-wrap: wrap; }
   .vdp-chip-container { flex-wrap: wrap; }
-  .vdp-media-counter { margin-left: 0; width: 100%; margin-top: 5px; }
   .vdp-panel { width: 320px; min-width: 280px; }
 }

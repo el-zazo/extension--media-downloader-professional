@@ -43,8 +43,8 @@ const CONFIG = {
   NOTIFICATION_TIMEOUT: 2000,
   URL_CHECK_INTERVAL: 1000,
   MAX_URL_LENGTH: 60,
-  FILTER_STORAGE_KEY: "vdp_filterState",
-  SORT_STORAGE_KEY: "vdp_sortOption",
+  FILTER_STORAGE_KEY: "filterState",
+  SORT_STORAGE_KEY: "sortOption",
 };
 
 const MEDIA_TYPES = {
@@ -130,21 +130,25 @@ const escapeHTML = (str) => {
  */
 
 const loadFilterState = () => {
-  try {
-    const stored = localStorage.getItem(CONFIG.FILTER_STORAGE_KEY);
-    if (stored) {
-      const saved = JSON.parse(stored);
-      filterState.videos = new Set(saved.videos || []);
-      filterState.images = new Set(saved.images || []);
-      filterState.audio = new Set(saved.audio || []);
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get([CONFIG.FILTER_STORAGE_KEY, CONFIG.SORT_STORAGE_KEY], (result) => {
+        if (result[CONFIG.FILTER_STORAGE_KEY]) {
+          const saved = result[CONFIG.FILTER_STORAGE_KEY];
+          filterState.videos = new Set(saved.videos || []);
+          filterState.images = new Set(saved.images || []);
+          filterState.audio = new Set(saved.audio || []);
+        }
+        if (result[CONFIG.SORT_STORAGE_KEY] && Object.values(SORT_OPTIONS).includes(result[CONFIG.SORT_STORAGE_KEY])) {
+          currentSort = result[CONFIG.SORT_STORAGE_KEY];
+        }
+        resolve();
+      });
+    } catch (error) {
+      console.error("Error loading filter state:", error);
+      resolve();
     }
-    const sortStored = localStorage.getItem(CONFIG.SORT_STORAGE_KEY);
-    if (sortStored && Object.values(SORT_OPTIONS).includes(sortStored)) {
-      currentSort = sortStored;
-    }
-  } catch (error) {
-    console.error("Error loading filter state:", error);
-  }
+  });
 };
 
 const saveFilterState = () => {
@@ -154,7 +158,7 @@ const saveFilterState = () => {
       images: Array.from(filterState.images),
       audio: Array.from(filterState.audio),
     };
-    localStorage.setItem(CONFIG.FILTER_STORAGE_KEY, JSON.stringify(state));
+    chrome.storage.local.set({ [CONFIG.FILTER_STORAGE_KEY]: state });
   } catch (error) {
     console.error("Error saving filter state:", error);
   }
@@ -162,7 +166,7 @@ const saveFilterState = () => {
 
 const saveSortOption = () => {
   try {
-    localStorage.setItem(CONFIG.SORT_STORAGE_KEY, currentSort);
+    chrome.storage.local.set({ [CONFIG.SORT_STORAGE_KEY]: currentSort });
   } catch (error) {
     console.error("Error saving sort option:", error);
   }
@@ -919,9 +923,16 @@ const createMediaPanel = () => {
           if (prevBtn) prevBtn.classList.remove("open");
         }
         const dd = chip.querySelector(".vdp-chip-dropdown");
+        const isOpen = dd.classList.contains("open");
         chipBtn.classList.toggle("open");
         dd.classList.toggle("open");
         openChipDropdown = dd.classList.contains("open") ? category : null;
+        // Position the fixed dropdown relative to the chip button
+        if (!isOpen) {
+          const btnRect = chipBtn.getBoundingClientRect();
+          dd.style.left = btnRect.left + "px";
+          dd.style.top = (btnRect.bottom + 4) + "px";
+        }
       });
 
       const extensions = category === "videos" ? MEDIA_TYPES.VIDEO : category === "images" ? MEDIA_TYPES.IMAGE : MEDIA_TYPES.AUDIO;
@@ -1181,25 +1192,33 @@ const handleShowPanelMessage = (sendResponse) => {
       mediaPanel = ui.panel;
     }
 
-    // Load all media from storage to ensure nothing is missed
-    chrome.runtime.sendMessage({ action: "getMedias" }, (response) => {
-      if (chrome.runtime.lastError) {
-        renderAllMediaToPanel();
-        return;
-      }
+    // Load saved filter state and sort option from chrome.storage.local first
+    loadFilterState().then(() => {
+      // Update sort dropdown to reflect loaded state
+      const sortSelect = mediaPanel.querySelector(".vdp-sort-select");
+      if (sortSelect) sortSelect.value = currentSort;
+      updateChipDropdowns();
 
-      if (response && response.medias) {
-        Object.values(response.medias).forEach((tabMediaList) => {
-          if (Array.isArray(tabMediaList)) {
-            tabMediaList.forEach((media) => {
-              if (media && media.url && !detectedMedias.has(media.url)) {
-                detectedMedias.set(media.url, media);
-              }
-            });
-          }
-        });
-      }
-      renderAllMediaToPanel();
+      // Load all media from storage to ensure nothing is missed
+      chrome.runtime.sendMessage({ action: "getMedias" }, (response) => {
+        if (chrome.runtime.lastError) {
+          renderAllMediaToPanel();
+          return;
+        }
+
+        if (response && response.medias) {
+          Object.values(response.medias).forEach((tabMediaList) => {
+            if (Array.isArray(tabMediaList)) {
+              tabMediaList.forEach((media) => {
+                if (media && media.url && !detectedMedias.has(media.url)) {
+                  detectedMedias.set(media.url, media);
+                }
+              });
+            }
+          });
+        }
+        renderAllMediaToPanel();
+      });
     });
 
     if (mediaPanel.classList.contains("collapsed")) {
@@ -1285,8 +1304,16 @@ const initialize = () => {
     isInitialized = true;
     currentPageUrl = window.location.href;
 
-    // Load saved filter state and sort option
-    loadFilterState();
+    // Load saved filter state and sort option from chrome.storage.local
+    loadFilterState().then(() => {
+      // Update sort dropdown in panel if it exists
+      if (mediaPanel) {
+        const sortSelect = mediaPanel.querySelector(".vdp-sort-select");
+        if (sortSelect) sortSelect.value = currentSort;
+        updateChipDropdowns();
+        applyFilter();
+      }
+    });
 
     chrome.runtime.onMessage.addListener(handleBackgroundMessages);
     setInterval(monitorUrlChanges, CONFIG.URL_CHECK_INTERVAL);
