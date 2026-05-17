@@ -458,6 +458,11 @@ body {
   display: flex;
 }
 
+/* Fix: ensure the detected media tab content doesn't overflow when popup is small */
+.tab-content.active[data-tab="detected"] {
+  overflow: hidden;
+}
+
 /* ===== SAVE MODAL ===== */
 .save-modal {
   position: fixed;

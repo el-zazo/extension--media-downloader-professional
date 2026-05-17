@@ -872,8 +872,15 @@ const createMediaPanel = () => {
     minimizeBtn.innerHTML = ICONS.minimize;
     minimizeBtn.title = "Minimize";
     minimizeBtn.onclick = () => {
+      const wasCollapsed = mediaPanel.classList.contains("collapsed");
       mediaPanel.classList.toggle("collapsed");
       minimizeBtn.innerHTML = mediaPanel.classList.contains("collapsed") ? ICONS.maximize : ICONS.minimize;
+      // When expanding, check if the panel is still within viewport bounds
+      if (wasCollapsed) {
+        requestAnimationFrame(() => {
+          ensurePositionInViewport(mediaPanel);
+        });
+      }
     };
 
     const closeBtn = document.createElement("button");
@@ -997,7 +1004,17 @@ const createMediaPanel = () => {
     clearAllBtn.addEventListener("click", () => {
       if (confirm("Are you sure you want to clear all detected media for this page?")) {
         chrome.runtime.sendMessage({ action: "clearMedias", tabId: getTabId() }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error("Error clearing medias:", chrome.runtime.lastError);
+            showNotification("Failed to clear media");
+            return;
+          }
           if (response && response.success) {
+            detectedMedias.clear();
+            renderAllMediaToPanel();
+            showNotification("All media cleared");
+          } else {
+            // Even if background clear failed, still clear local state for responsiveness
             detectedMedias.clear();
             renderAllMediaToPanel();
             showNotification("All media cleared");
@@ -1050,11 +1067,11 @@ const createMediaPanel = () => {
 };
 
 /**
- * Helper to get current tab ID (best effort from URL)
+ * Helper to get current tab ID.
+ * Content scripts don't have direct access to chrome.tabs API,
+ * so we send undefined and let the background script use sender.tab.id.
  */
 const getTabId = () => {
-  // In content scripts we don't have direct access to tab ID,
-  // but we can send a message without it and let background handle it
   return undefined;
 };
 
@@ -1064,32 +1081,82 @@ const getTabId = () => {
  * ==============================
  */
 
+/**
+ * Ensures the panel element is fully within the viewport.
+ * If any edge is out of bounds, repositions the element to the nearest
+ * valid position with a minimum 20px margin from each viewport edge.
+ * This is called on panel creation, when showing the panel, and on window resize.
+ */
+const ensurePositionInViewport = (element) => {
+  try {
+    if (!element || !element.offsetParent) return;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const ew = element.offsetWidth;
+    const eh = element.offsetHeight;
+    const margin = 20;
+
+    // Get current computed position
+    const rect = element.getBoundingClientRect();
+    let top = rect.top;
+    let left = rect.left;
+
+    let needsCorrection = false;
+
+    // Check if panel is out of bounds on any edge
+    if (rect.bottom > vh - margin || rect.right > vw - margin || rect.top < margin || rect.left < margin) {
+      needsCorrection = true;
+    }
+
+    // If panel is wider or taller than viewport, just center it best we can
+    if (ew >= vw - 2 * margin) {
+      left = margin;
+    } else if (left < margin) {
+      left = margin;
+    } else if (left + ew > vw - margin) {
+      left = vw - ew - margin;
+    }
+
+    if (eh >= vh - 2 * margin) {
+      top = margin;
+    } else if (top < margin) {
+      top = margin;
+    } else if (top + eh > vh - margin) {
+      top = vh - eh - margin;
+    }
+
+    if (needsCorrection) {
+      element.style.top = top + "px";
+      element.style.left = left + "px";
+      element.style.right = "auto";
+    }
+  } catch (error) {
+    console.error("Error ensuring position in viewport:", error);
+  }
+};
+
 const makeDraggable = (element, handle) => {
   try {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
 
     const setInitialPosition = () => {
+      // Simply position at top-right with 20px margin
       element.style.top = "20px";
       element.style.right = "20px";
       element.style.left = "auto";
-      const minRight = Math.max(20, window.innerWidth - element.offsetWidth - 40);
-      element.style.right = `${minRight}px`;
+
+      // After the browser has laid out the element, verify it's in viewport
+      requestAnimationFrame(() => {
+        ensurePositionInViewport(element);
+      });
     };
 
     setInitialPosition();
 
     window.addEventListener("resize", () => {
       try {
-        if (element.style.left === "auto" || !element.style.left) {
-          setInitialPosition();
-        } else {
-          const maxLeft = window.innerWidth - element.offsetWidth - 20;
-          if (parseInt(element.style.left) > maxLeft) element.style.left = `${maxLeft}px`;
-          if (parseInt(element.style.left) < 20) element.style.left = "20px";
-          if (parseInt(element.style.top) > window.innerHeight - element.offsetHeight - 20)
-            element.style.top = `${window.innerHeight - element.offsetHeight - 20}px`;
-          if (parseInt(element.style.top) < 20) element.style.top = "20px";
-        }
+        ensurePositionInViewport(element);
       } catch (resizeError) {
         console.error("Error handling resize:", resizeError);
       }
@@ -1226,6 +1293,12 @@ const handleShowPanelMessage = (sendResponse) => {
       const minimizeBtn = mediaPanel.querySelector(".vdp-minimize");
       if (minimizeBtn) minimizeBtn.innerHTML = ICONS.minimize;
     }
+
+    // Ensure the panel is fully visible within the viewport
+    // (handles case where panel was dragged to the bottom before closing/minimizing)
+    requestAnimationFrame(() => {
+      ensurePositionInViewport(mediaPanel);
+    });
 
     sendResponse({ success: true });
   } catch (error) {

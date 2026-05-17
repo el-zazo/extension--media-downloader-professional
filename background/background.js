@@ -547,7 +547,7 @@ const MessageHandler = {
           return MessageHandler.handleDownloadMedia(message, sendResponse);
         
         case "clearMedias":
-          return MessageHandler.handleClearMedias(message, sendResponse);
+          return MessageHandler.handleClearMedias(message, sender, sendResponse);
           
         default:
           utils.log(`Unknown message action: ${message.action}`, "warn");
@@ -597,14 +597,16 @@ const MessageHandler = {
    * @param {Function} sendResponse - Function to send a response
    * @returns {boolean} - True to indicate async response
    */
-  handleClearMedias: (message, sendResponse) => {
-    if (!message || !message.tabId) {
+  handleClearMedias: (message, sender, sendResponse) => {
+    // Use sender.tab.id as fallback when tabId is not provided (e.g. from content scripts)
+    const tabId = (message && message.tabId) || (sender && sender.tab && sender.tab.id);
+    if (!tabId) {
       utils.log("clearMedias request missing tabId", "error");
       sendResponse({ success: false, error: "Missing tabId" });
       return false;
     }
     
-    MediaDetector.clearTabMedias(message.tabId)
+    MediaDetector.clearTabMedias(tabId)
       .then(() => {
         sendResponse({ success: true });
       })
