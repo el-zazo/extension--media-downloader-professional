@@ -5,14 +5,13 @@ body {
   background-color: #222;
   color: #eee;
   width: 450px;
-  max-height: 550px;
+  height: 550px;
   overflow: hidden;
 }
 .container {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-height: 550px;
+  height: 550px;
 }
 .header {
   background-color: #0047ab;
@@ -21,6 +20,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 .header-title {
   font-size: 16px;
@@ -29,7 +29,7 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  max-height: calc(390px - 43px);
+  min-height: 0;
   background-color: #222;
 }
 .empty-state {
@@ -154,6 +154,7 @@ body {
   border-top: 1px solid #333;
   font-size: 12px;
   color: #999;
+  flex-shrink: 0;
 }
 .footer-actions {
   display: flex;
@@ -241,6 +242,8 @@ body {
   position: relative;
   flex-wrap: nowrap;
   overflow: visible;
+  flex-shrink: 0;
+  z-index: 50;
 }
 
 .filter-chips {
@@ -252,6 +255,7 @@ body {
 
 .filter-chip {
   position: relative;
+  z-index: 60;
 }
 
 .chip-btn {
@@ -312,9 +316,7 @@ body {
 
 .chip-dropdown {
   display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
+  position: fixed;
   margin-top: 4px;
   background: #333;
   border: 1px solid #444;
@@ -323,7 +325,7 @@ body {
   min-width: 140px;
   max-height: 200px;
   overflow-y: auto;
-  z-index: 100;
+  z-index: 10000;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
@@ -387,6 +389,7 @@ body {
   padding: 6px 12px;
   background: #252525;
   border-bottom: 1px solid #333;
+  flex-shrink: 0;
 }
 
 .sort-label {
@@ -420,6 +423,7 @@ body {
 .tabs-container {
   background-color: #333;
   border-bottom: 1px solid #444;
+  flex-shrink: 0;
 }
 .tabs {
   display: flex;
@@ -447,6 +451,8 @@ body {
   display: none;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 .tab-content.active {
   display: flex;
@@ -650,7 +656,7 @@ body {
 .saved-media-content {
   flex: 1;
   overflow-y: auto;
-  max-height: calc(390px - 43px);
+  min-height: 0;
   background-color: #222;
 }
 

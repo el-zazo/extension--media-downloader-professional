@@ -714,6 +714,7 @@ const updateFilterUI = () => {
 
 /**
  * Toggles a chip dropdown open/closed
+ * Uses position:fixed for the dropdown to escape overflow clipping
  * @param {string} category - The category to toggle
  */
 const toggleChipDropdown = (category) => {
@@ -733,6 +734,13 @@ const toggleChipDropdown = (category) => {
     dropdown.classList.toggle("open");
     chipBtn.classList.toggle("open");
     openDropdown = isOpen ? null : category;
+
+    // Position the fixed dropdown relative to the chip button
+    if (!isOpen) {
+      const btnRect = chipBtn.getBoundingClientRect();
+      dropdown.style.left = btnRect.left + "px";
+      dropdown.style.top = (btnRect.bottom + 4) + "px";
+    }
   }
 };
 

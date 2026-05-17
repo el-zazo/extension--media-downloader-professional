@@ -1257,7 +1257,10 @@ const handleRescanPageMessage = (sendResponse) => {
 const handleClearMediasMessage = (sendResponse) => {
   try {
     detectedMedias.clear();
-    if (mediaPanel) { mediaPanel.remove(); mediaPanel = null; }
+    // Instead of destroying the panel, just re-render it empty
+    if (mediaPanel) {
+      renderAllMediaToPanel();
+    }
     sendResponse({ success: true });
   } catch (error) {
     sendResponse({ success: false, error: error.message });
