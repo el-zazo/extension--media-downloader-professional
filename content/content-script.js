@@ -200,7 +200,7 @@ const isAnyFilterActive = () => {
 /**
  * Checks if a media item matches the current filter state.
  *
- * KEY FIX: When ANY category has specific filters selected (size > 0),
+ * When ANY category has specific filters selected (size > 0),
  * only items matching those specific filters are shown.
  * Categories with no specific filters selected will NOT show their items
  * when other categories are filtered.
@@ -467,7 +467,7 @@ const previewMedia = (media) => {
     const title = document.createElement("div");
     title.className = "vdp-preview-title";
     const typeLabel = isImage ? "Image" : isAudio ? "Audio" : "Video";
-    title.textContent = `${typeLabel} Preview — ${extension.toUpperCase()}`;
+    title.textContent = `${typeLabel} Preview \u2014 ${extension.toUpperCase()}`;
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "vdp-preview-close";
@@ -712,6 +712,9 @@ const addMediaToPanel = (media) => {
       content.innerHTML = "";
       content.appendChild(mediaList);
     }
+
+    // Hide empty state if it's showing
+    if (emptyState) emptyState.style.display = "none";
 
     const mediaItem = createMediaItem(media);
     if (mediaItem) mediaList.appendChild(mediaItem);
@@ -997,29 +1000,30 @@ const createMediaPanel = () => {
     footerActions.className = "vdp-footer-actions";
 
     // Clear All button
+    // FIX: Clear local state immediately, then notify background to clear storage.
+    // This avoids the race condition where the content script's own onMessage listener
+    // intercepts the clearMedias message sent via chrome.runtime.sendMessage.
     const clearAllBtn = document.createElement("button");
     clearAllBtn.className = "vdp-footer-btn vdp-danger-btn";
     clearAllBtn.textContent = "Clear All";
     clearAllBtn.title = "Clear all detected media";
     clearAllBtn.addEventListener("click", () => {
       if (confirm("Are you sure you want to clear all detected media for this page?")) {
-        chrome.runtime.sendMessage({ action: "clearMedias", tabId: getTabId() }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error("Error clearing medias:", chrome.runtime.lastError);
-            showNotification("Failed to clear media");
-            return;
-          }
-          if (response && response.success) {
-            detectedMedias.clear();
-            renderAllMediaToPanel();
-            showNotification("All media cleared");
-          } else {
-            // Even if background clear failed, still clear local state for responsiveness
-            detectedMedias.clear();
-            renderAllMediaToPanel();
-            showNotification("All media cleared");
-          }
-        });
+        // 1. Clear local state immediately for instant feedback
+        detectedMedias.clear();
+        renderAllMediaToPanel();
+        showNotification("All media cleared");
+
+        // 2. Notify background to clear storage (fire-and-forget)
+        // We don't wait for the response since we already cleared locally.
+        // The background will also call notifyTabClear which may trigger
+        // handleClearMediasMessage, but detectedMedias is already empty so it's harmless.
+        try {
+          chrome.runtime.sendMessage({ action: "clearMedias" });
+        } catch (e) {
+          // Ignore errors - local state is already cleared
+          console.log("Background clear notification sent (fire-and-forget)");
+        }
       }
     });
 
@@ -1064,15 +1068,6 @@ const createMediaPanel = () => {
     document.body.appendChild(fallback);
     return { panel: fallback, content: fallback, emptyState: null, mediaList: null };
   }
-};
-
-/**
- * Helper to get current tab ID.
- * Content scripts don't have direct access to chrome.tabs API,
- * so we send undefined and let the background script use sender.tab.id.
- */
-const getTabId = () => {
-  return undefined;
 };
 
 /**
@@ -1202,6 +1197,12 @@ const makeDraggable = (element, handle) => {
  * ==============================
  */
 
+/**
+ * Handles messages from the background script.
+ * These are messages sent via chrome.tabs.sendMessage (from background to this tab).
+ * Messages sent via chrome.runtime.sendMessage from the content script itself
+ * are also received here, so we need to handle that carefully.
+ */
 const handleBackgroundMessages = (message, sender, sendResponse) => {
   try {
     if (!message || !message.action) {
@@ -1295,7 +1296,6 @@ const handleShowPanelMessage = (sendResponse) => {
     }
 
     // Ensure the panel is fully visible within the viewport
-    // (handles case where panel was dragged to the bottom before closing/minimizing)
     requestAnimationFrame(() => {
       ensurePositionInViewport(mediaPanel);
     });
@@ -1317,12 +1317,19 @@ const renderAllMediaToPanel = () => {
     mediaList.className = "vdp-media-list";
     content.appendChild(mediaList);
 
-    // Sort medias before rendering
-    const sortedMedias = getSortedMedias();
-    sortedMedias.forEach((media) => {
-      const item = createMediaItem(media);
-      if (item) mediaList.appendChild(item);
-    });
+    if (detectedMedias.size === 0) {
+      const emptyState = document.createElement("div");
+      emptyState.className = "vdp-empty";
+      emptyState.textContent = "No media detected yet. Browse the page to detect media automatically.";
+      content.appendChild(emptyState);
+    } else {
+      // Sort medias before rendering
+      const sortedMedias = getSortedMedias();
+      sortedMedias.forEach((media) => {
+        const item = createMediaItem(media);
+        if (item) mediaList.appendChild(item);
+      });
+    }
 
     const totalCount = detectedMedias.size;
     const countText = totalCount === 1 ? "1 media" : `${totalCount} medias`;
@@ -1346,10 +1353,22 @@ const handleRescanPageMessage = (sendResponse) => {
   }
 };
 
+/**
+ * Handles clearMedias messages from the background script.
+ * This is called when:
+ * - The user clears media from the popup (background sends clearMedias via notifyTabClear)
+ * - The tab navigates to a new URL
+ * - The tab is closed (though the content script may already be unloaded)
+ *
+ * Note: This is also triggered when the content script itself sends clearMedias
+ * via chrome.runtime.sendMessage, because that message is broadcast to all
+ * listeners. In that case, detectedMedias is already cleared by the Clear All
+ * button handler, so this just re-renders (harmless).
+ */
 const handleClearMediasMessage = (sendResponse) => {
   try {
     detectedMedias.clear();
-    // Instead of destroying the panel, just re-render it empty
+    // Re-render the panel to show empty state
     if (mediaPanel) {
       renderAllMediaToPanel();
     }

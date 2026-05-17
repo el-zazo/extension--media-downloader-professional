@@ -4,9 +4,10 @@
  * This script is responsible for detecting media from web requests and sending them
  * to the content script for processing. It monitors network traffic, identifies media
  * files based on MIME types and extensions, and manages the detected media items.
+ * Includes badge support to show media count on the extension icon.
  * 
  * @author Video Downloader Professional Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 /**
@@ -28,6 +29,7 @@ const MIN_FILE_SIZE = 1024 * 10; // 10KB minimum size for valid media files
 const MEDIA_MIME_TYPES = ["video/", "audio/", "application/x-mpegurl", "application/vnd.apple.mpegurl", "image/"];
 const MAX_CACHED_URLS = 1000; // Maximum number of URLs to keep in memory
 const CLEANUP_THRESHOLD = 500; // Number of URLs to remove when cache is full
+const BADGE_COLOR = "#0047ab"; // Extension badge background color
 
 // In-memory cache to track detected medias and avoid duplicates
 // This Set is restored from storage on service worker restart
@@ -35,6 +37,55 @@ const detectedMedias = new Set();
 
 // Storage key for persisting the detected media cache
 const CACHE_STORAGE_KEY = "detectedMediaCache";
+
+/**
+ * ==========================================
+ * BADGE MANAGEMENT
+ * ==========================================
+ * 
+ * Updates the extension icon badge to show the number of detected
+ * media items for a given tab. This allows users to see at a glance
+ * how many media items have been found without opening the popup.
+ */
+
+/**
+ * Updates the badge text for a specific tab to show the media count.
+ * If count is 0, the badge is cleared. For counts > 999, shows "999+".
+ * 
+ * @param {number} tabId - The ID of the tab to update the badge for
+ * @param {number} count - The number of media items detected
+ */
+const updateBadge = async (tabId, count) => {
+  try {
+    if (typeof tabId !== 'number' || tabId < 0) return;
+    
+    const text = count > 0 ? (count > 999 ? "999+" : String(count)) : "";
+    await chrome.action.setBadgeText({ text, tabId });
+    await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR, tabId });
+  } catch (error) {
+    // Badge updates can fail if the tab is closed or not yet ready
+    utils.log(`Badge update failed for tab ${tabId}: ${error.message}`, "info");
+  }
+};
+
+/**
+ * Recalculates and updates the badge for a given tab by counting
+ * the stored media items for that tab.
+ * 
+ * @param {number} tabId - The ID of the tab to recalculate the badge for
+ */
+const refreshBadgeForTab = async (tabId) => {
+  try {
+    if (typeof tabId !== 'number' || tabId < 0) return;
+    
+    const result = await chrome.storage.local.get(["medias"]);
+    const medias = result.medias || {};
+    const count = (medias[tabId] || []).length;
+    await updateBadge(tabId, count);
+  } catch (error) {
+    utils.log(`Badge refresh failed for tab ${tabId}: ${error.message}`, "info");
+  }
+};
 
 /**
  * ==========================================
@@ -264,6 +315,9 @@ const MediaDetector = {
       
       // Store in local storage for the popup
       await MediaDetector.storeMediaItem(tabId, mediaItem, cleanUrl);
+
+      // Update the badge for this tab
+      await refreshBadgeForTab(tabId);
       
     } catch (error) {
       utils.log(utils.formatError(error, "media detection"), "error");
@@ -425,7 +479,7 @@ const MediaDetector = {
   
   /**
    * Notifies the content script that its media should be cleared
-   * (happens on tab navigation or close)
+   * (happens on tab navigation, close, or when user clears from popup)
    * 
    * @param {number} tabId - The ID of the tab to notify
    * @returns {Promise<void>}
@@ -507,6 +561,9 @@ const MediaDetector = {
         // Persist the updated dedup cache
         MediaDetector.persistCache();
       }
+
+      // Update badge to show 0 for this tab
+      await updateBadge(tabId, 0);
     } catch (error) {
       utils.log(`Error clearing tab medias: ${error.message}`, "error");
     }
@@ -590,10 +647,12 @@ const MessageHandler = {
   },
   
   /**
-   * Handles clearMedias requests from content scripts
-   * Clears media for a specific tab
+   * Handles clearMedias requests from content scripts and popup.
+   * After clearing storage, notifies the content script so the in-page
+   * panel can update immediately.
    * 
    * @param {Object} message - The message object (may contain tabId)
+   * @param {Object} sender - Information about the message sender
    * @param {Function} sendResponse - Function to send a response
    * @returns {boolean} - True to indicate async response
    */
@@ -607,6 +666,11 @@ const MessageHandler = {
     }
     
     MediaDetector.clearTabMedias(tabId)
+      .then(() => {
+        // Notify the content script so the in-page panel updates immediately
+        // This is critical: without this, clearing from popup doesn't reflect in the panel
+        return MediaDetector.notifyTabClear(tabId);
+      })
       .then(() => {
         sendResponse({ success: true });
       })
@@ -665,8 +729,7 @@ const initializeExtension = () => {
     // Clear media cache when a tab is closed
     chrome.tabs.onRemoved.addListener((tabId) => {
       MediaDetector.clearTabMedias(tabId);
-      // Notify the content script so it can clear its own state
-      MediaDetector.notifyTabClear(tabId);
+      // No need to notify content script - tab is already closed
     });
     utils.log("Tab removal listener registered", "info");
 
@@ -680,6 +743,12 @@ const initializeExtension = () => {
       }
     });
     utils.log("Tab navigation listener registered", "info");
+
+    // Update badge when user switches tabs
+    chrome.tabs.onActivated.addListener((activeInfo) => {
+      refreshBadgeForTab(activeInfo.tabId);
+    });
+    utils.log("Tab activation listener registered", "info");
 
     // Set up message handler for communication
     chrome.runtime.onMessage.addListener(MessageHandler.handleMessage);
@@ -697,4 +766,11 @@ const initializeExtension = () => {
  */
 MediaDetector.restoreCache().then(() => {
   initializeExtension();
+  
+  // Set initial badge for the currently active tab
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs.length > 0) {
+      refreshBadgeForTab(tabs[0].id);
+    }
+  });
 });
