@@ -1,11 +1,11 @@
 /**
  * Media Downloader Professional - Popup Script
- * Handles the extension popup functionality with multi-select filters
- * and media preview/playback
+ * Handles the extension popup functionality with multi-select filters,
+ * sorting, and media preview/playback
  */
 
 // Constants
-import { IMAGE_EXTENSIONS, AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, MEDIA_EXTENSIONS, DEFAULT_TAB, STORAGE_KEYS, ACTIONS } from "./constants.js";
+import { IMAGE_EXTENSIONS, AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, MEDIA_EXTENSIONS, DEFAULT_TAB, STORAGE_KEYS, ACTIONS, SORT_OPTIONS, DEFAULT_SORT } from "./constants.js";
 
 // Icons
 import { ICONS } from "./icons.js";
@@ -35,6 +35,9 @@ let filterState = {
   audio: new Set(),
 };
 
+// Current sort option
+let currentSort = DEFAULT_SORT;
+
 // Track active tab
 let activeTab = DEFAULT_TAB;
 
@@ -45,7 +48,7 @@ let suggestedFilename = "";
 // Currently open chip dropdown (only one at a time)
 let openDropdown = null;
 
-// ===== FILTER STATE PERSISTENCE =====
+// ===== FILTER & SORT STATE PERSISTENCE =====
 
 /**
  * Loads the saved filter state from chrome.storage.local
@@ -53,12 +56,15 @@ let openDropdown = null;
  */
 const loadFilterState = () => {
   return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEYS.FILTER_STATE], (result) => {
+    chrome.storage.local.get([STORAGE_KEYS.FILTER_STATE, STORAGE_KEYS.SORT_OPTION], (result) => {
       if (result[STORAGE_KEYS.FILTER_STATE]) {
         const saved = result[STORAGE_KEYS.FILTER_STATE];
         filterState.videos = new Set(saved.videos || []);
         filterState.images = new Set(saved.images || []);
         filterState.audio = new Set(saved.audio || []);
+      }
+      if (result[STORAGE_KEYS.SORT_OPTION] && Object.values(SORT_OPTIONS).includes(result[STORAGE_KEYS.SORT_OPTION])) {
+        currentSort = result[STORAGE_KEYS.SORT_OPTION];
       }
       resolve();
     });
@@ -78,6 +84,13 @@ const saveFilterState = () => {
 };
 
 /**
+ * Saves the current sort option to chrome.storage.local
+ */
+const saveSortOption = () => {
+  chrome.storage.local.set({ [STORAGE_KEYS.SORT_OPTION]: currentSort });
+};
+
+/**
  * Resets all filter selections and saves the state
  */
 const resetFilters = () => {
@@ -87,6 +100,16 @@ const resetFilters = () => {
   saveFilterState();
   updateFilterUI();
   loadMedias();
+};
+
+// ===== CHECK IF ANY FILTER IS ACTIVE =====
+
+/**
+ * Returns true if at least one category has specific filters selected
+ * (i.e., not "show all" for every category)
+ */
+const isAnyFilterActive = () => {
+  return filterState.videos.size > 0 || filterState.images.size > 0 || filterState.audio.size > 0;
 };
 
 // ===== MEDIA OPERATIONS =====
@@ -190,7 +213,11 @@ const previewMedia = (media) => {
     const typeLabel = isImage ? "Image" : isAudio ? "Audio" : "Video";
     previewTitle.textContent = `${typeLabel} Preview — ${extension.toUpperCase()}`;
 
-    // Clear previous content
+    // Clear previous content and stop any playing media
+    const prevVideo = previewBody.querySelector("video");
+    const prevAudio = previewBody.querySelector("audio");
+    if (prevVideo) prevVideo.pause();
+    if (prevAudio) prevAudio.pause();
     previewBody.innerHTML = "";
 
     if (isImage) {
@@ -216,7 +243,6 @@ const previewMedia = (media) => {
       video.controls = true;
       video.autoplay = true;
       video.style.width = "100%";
-      video.style.maxHeight = "300px";
       video.src = media.url;
       video.onerror = () => {
         previewBody.innerHTML = '<div style="color:#999;padding:20px;text-align:center;">Failed to load video. Try opening in a new tab.</div>';
@@ -250,6 +276,51 @@ const closePreview = () => {
 
   previewBody.innerHTML = "";
   previewModal.classList.remove("active");
+};
+
+// ===== SORT LOGIC =====
+
+/**
+ * Sorts an array of media items based on the current sort option
+ * @param {Array} medias - Array of media objects
+ * @returns {Array} - Sorted array
+ */
+const sortMedias = (medias) => {
+  if (!Array.isArray(medias)) return [];
+
+  const sorted = [...medias];
+  switch (currentSort) {
+    case SORT_OPTIONS.DATE_DESC:
+      sorted.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      break;
+    case SORT_OPTIONS.DATE_ASC:
+      sorted.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      break;
+    case SORT_OPTIONS.SIZE_DESC:
+      sorted.sort((a, b) => (b.size || 0) - (a.size || 0));
+      break;
+    case SORT_OPTIONS.SIZE_ASC:
+      sorted.sort((a, b) => (a.size || 0) - (b.size || 0));
+      break;
+    case SORT_OPTIONS.TYPE_ASC:
+      sorted.sort((a, b) => {
+        const extA = (a.extension || "").toLowerCase();
+        const extB = (b.extension || "").toLowerCase();
+        return extA.localeCompare(extB);
+      });
+      break;
+    case SORT_OPTIONS.TYPE_DESC:
+      sorted.sort((a, b) => {
+        const extA = (a.extension || "").toLowerCase();
+        const extB = (b.extension || "").toLowerCase();
+        return extB.localeCompare(extA);
+      });
+      break;
+    default:
+      // Default: newest first
+      sorted.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }
+  return sorted;
 };
 
 // ===== MEDIA ITEM UI =====
@@ -403,29 +474,55 @@ const getFileType = (media) => {
 };
 
 /**
- * Checks if a media item matches the current filter state
+ * Returns the category of a media item: "images", "audio", or "videos"
+ */
+const getMediaCategory = (media) => {
+  const fileType = getFileType(media);
+  const mime = media.mime || "";
+  if (IMAGE_EXTENSIONS.includes(fileType) || mime.includes("image/")) return "images";
+  if (AUDIO_EXTENSIONS.includes(fileType) || mime.includes("audio/")) return "audio";
+  return "videos";
+};
+
+/**
+ * Checks if a media item matches the current filter state.
+ *
+ * KEY FIX: When ANY category has specific filters selected (size > 0),
+ * only items that match those specific filters are shown.
+ * Categories with no specific filters selected will NOT show their items
+ * when other categories are filtered.
+ *
+ * When NO category has any specific filters (all empty = show all),
+ * then everything is displayed.
+ *
  * @param {Object} media - The media object
  * @returns {boolean}
  */
 const matchesFilter = (media) => {
   const fileType = getFileType(media);
-  const mime = media.mime || "";
-  const isImage = IMAGE_EXTENSIONS.includes(fileType) || mime.includes("image/");
-  const isAudio = AUDIO_EXTENSIONS.includes(fileType) || mime.includes("audio/");
+  const category = getMediaCategory(media);
 
-  if (isImage) {
-    // Empty set = show all images; otherwise only selected extensions
-    return filterState.images.size === 0 || filterState.images.has(fileType);
+  // If no filters are active anywhere, show everything
+  if (!isAnyFilterActive()) {
+    return true;
   }
-  if (isAudio) {
-    return filterState.audio.size === 0 || filterState.audio.has(fileType);
+
+  // Check if this media's category has specific filters
+  const categoryFilter = filterState[category];
+
+  if (categoryFilter.size > 0) {
+    // This category has specific filters - only show matching items
+    return categoryFilter.has(fileType);
+  } else {
+    // This category has NO specific filters, but other categories DO.
+    // Since the user explicitly filtered something, we should NOT show
+    // unfiltered categories (they didn't select these).
+    return false;
   }
-  // Video (default)
-  return filterState.videos.size === 0 || filterState.videos.has(fileType);
 };
 
 /**
- * Applies the current filter to the media list and updates the UI
+ * Applies the current filter and sort to the media list and updates the UI
  * @param {Array} medias - All media items for the current tab
  */
 const applyFilter = (medias) => {
@@ -436,13 +533,16 @@ const applyFilter = (medias) => {
   // Filter medias
   const filteredMedias = medias.filter((media) => matchesFilter(media));
 
+  // Sort the filtered results
+  const sortedMedias = sortMedias(filteredMedias);
+
   // Update category counts on chips
   updateChipCounts(medias);
 
   // Clear previous list items
   mediaList.innerHTML = "";
 
-  if (filteredMedias.length === 0) {
+  if (sortedMedias.length === 0) {
     emptyState.style.display = "block";
     mediaList.style.display = "none";
 
@@ -470,8 +570,8 @@ const applyFilter = (medias) => {
   } else {
     emptyState.style.display = "none";
     mediaList.style.display = "block";
-    filteredMedias.forEach((media) => {
-      const item = createMediaItem(media, medias);
+    sortedMedias.forEach((media) => {
+      const item = createMediaItem(media, sortedMedias);
       mediaList.appendChild(item);
     });
   }
@@ -488,10 +588,9 @@ const applyFilter = (medias) => {
 const updateChipCounts = (medias) => {
   let videoCount = 0, imageCount = 0, audioCount = 0;
   medias.forEach((media) => {
-    const fileType = getFileType(media);
-    const mime = media.mime || "";
-    if (IMAGE_EXTENSIONS.includes(fileType) || mime.includes("image/")) imageCount++;
-    else if (AUDIO_EXTENSIONS.includes(fileType) || mime.includes("audio/")) audioCount++;
+    const category = getMediaCategory(media);
+    if (category === "images") imageCount++;
+    else if (category === "audio") audioCount++;
     else videoCount++;
   });
 
@@ -696,6 +795,31 @@ const clearSavedMedia = () => {
   }
 };
 
+// Clear all detected medias for the current tab
+const clearAllMedias = () => {
+  if (confirm("Are you sure you want to clear all detected media for this page?")) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length === 0) return;
+      const currentTab = tabs[0];
+      const tabId = currentTab.id;
+
+      chrome.runtime.sendMessage({ action: ACTIONS.CLEAR_MEDIAS, tabId: tabId }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Error clearing medias:", chrome.runtime.lastError);
+          ui.showNotification("Failed to clear media");
+          return;
+        }
+        if (response && response.success) {
+          ui.showNotification("All detected media cleared");
+          loadMedias();
+        } else {
+          ui.showNotification("Failed to clear media");
+        }
+      });
+    });
+  }
+};
+
 // Show media panel in the current page
 const showInPage = () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -748,10 +872,16 @@ const switchTab = (tab) => {
 // ===== INITIALIZATION =====
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Load saved filter state, then setup UI
+  // Load saved filter state and sort option, then setup UI
   loadFilterState().then(() => {
     setupFilterChips();
     updateFilterUI();
+
+    // Restore sort dropdown to saved value
+    const sortSelect = document.getElementById("sortSelect");
+    if (sortSelect) {
+      sortSelect.value = currentSort;
+    }
   });
 
   // Chip button click handlers
@@ -780,6 +910,16 @@ document.addEventListener("DOMContentLoaded", () => {
     resetBtn.addEventListener("click", resetFilters);
   }
 
+  // Sort select change handler
+  const sortSelect = document.getElementById("sortSelect");
+  if (sortSelect) {
+    sortSelect.addEventListener("change", () => {
+      currentSort = sortSelect.value;
+      saveSortOption();
+      loadMedias();
+    });
+  }
+
   // Page action buttons
   const showInPageBtn = document.getElementById("showInPageBtn");
   if (showInPageBtn) {
@@ -788,6 +928,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const refreshBtn = document.getElementById("refreshBtn");
   if (refreshBtn) {
     refreshBtn.addEventListener("click", rescanPage);
+  }
+
+  // Clear all detected media button
+  const clearAllBtn = document.getElementById("clearAllBtn");
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener("click", clearAllMedias);
   }
 
   // Tab switching

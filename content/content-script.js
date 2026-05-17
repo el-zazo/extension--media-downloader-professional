@@ -1,7 +1,7 @@
 /**
  * Media Downloader Professional - Content Script
  * Creates and manages the media list UI on the webpage
- * with multi-select filters and media preview/playback
+ * with multi-select filters, sorting, and media preview/playback
  */
 
 /**
@@ -24,6 +24,18 @@ let filterState = {
   audio: new Set(),
 };
 
+// Sort options
+const SORT_OPTIONS = {
+  DATE_DESC: "date_desc",
+  DATE_ASC: "date_asc",
+  SIZE_DESC: "size_desc",
+  SIZE_ASC: "size_asc",
+  TYPE_ASC: "type_asc",
+  TYPE_DESC: "type_desc",
+};
+
+let currentSort = SORT_OPTIONS.DATE_DESC;
+
 const CONFIG = {
   PANEL_WIDTH: 380,
   PANEL_MAX_HEIGHT: 500,
@@ -32,6 +44,7 @@ const CONFIG = {
   URL_CHECK_INTERVAL: 1000,
   MAX_URL_LENGTH: 60,
   FILTER_STORAGE_KEY: "vdp_filterState",
+  SORT_STORAGE_KEY: "vdp_sortOption",
 };
 
 const MEDIA_TYPES = {
@@ -92,6 +105,14 @@ const getMediaType = (media) => {
   }
 };
 
+const getMediaCategory = (media) => {
+  const fileType = getMediaType(media);
+  const mime = media.mime || "";
+  if (MEDIA_TYPES.IMAGE.includes(fileType) || mime.includes("image/")) return "images";
+  if (MEDIA_TYPES.AUDIO.includes(fileType) || mime.includes("audio/")) return "audio";
+  return "videos";
+};
+
 const escapeHTML = (str) => {
   if (!str || typeof str !== 'string') return '';
   return str
@@ -117,6 +138,10 @@ const loadFilterState = () => {
       filterState.images = new Set(saved.images || []);
       filterState.audio = new Set(saved.audio || []);
     }
+    const sortStored = localStorage.getItem(CONFIG.SORT_STORAGE_KEY);
+    if (sortStored && Object.values(SORT_OPTIONS).includes(sortStored)) {
+      currentSort = sortStored;
+    }
   } catch (error) {
     console.error("Error loading filter state:", error);
   }
@@ -135,6 +160,14 @@ const saveFilterState = () => {
   }
 };
 
+const saveSortOption = () => {
+  try {
+    localStorage.setItem(CONFIG.SORT_STORAGE_KEY, currentSort);
+  } catch (error) {
+    console.error("Error saving sort option:", error);
+  }
+};
+
 const resetFilters = () => {
   filterState.videos.clear();
   filterState.images.clear();
@@ -146,29 +179,97 @@ const resetFilters = () => {
 
 /**
  * ==============================
+ * CHECK IF ANY FILTER IS ACTIVE
+ * ==============================
+ */
+
+const isAnyFilterActive = () => {
+  return filterState.videos.size > 0 || filterState.images.size > 0 || filterState.audio.size > 0;
+};
+
+/**
+ * ==============================
  * FILTERING FUNCTIONS
  * ==============================
  */
 
+/**
+ * Checks if a media item matches the current filter state.
+ *
+ * KEY FIX: When ANY category has specific filters selected (size > 0),
+ * only items matching those specific filters are shown.
+ * Categories with no specific filters selected will NOT show their items
+ * when other categories are filtered.
+ *
+ * When NO category has any specific filters (all empty = show all),
+ * then everything is displayed.
+ */
 const matchesFilter = (media) => {
   try {
     if (!media) return false;
     const fileType = getMediaType(media);
-    const mime = media.mime || "";
-    const isImage = MEDIA_TYPES.IMAGE.includes(fileType) || mime.includes("image/");
-    const isAudio = MEDIA_TYPES.AUDIO.includes(fileType) || mime.includes("audio/");
+    const category = getMediaCategory(media);
 
-    if (isImage) {
-      return filterState.images.size === 0 || filterState.images.has(fileType);
+    // If no filters are active anywhere, show everything
+    if (!isAnyFilterActive()) {
+      return true;
     }
-    if (isAudio) {
-      return filterState.audio.size === 0 || filterState.audio.has(fileType);
+
+    // Check if this media's category has specific filters
+    const categoryFilter = filterState[category];
+
+    if (categoryFilter.size > 0) {
+      // This category has specific filters - only show matching items
+      return categoryFilter.has(fileType);
+    } else {
+      // This category has NO specific filters, but other categories DO.
+      // Since the user explicitly filtered something, we should NOT show
+      // unfiltered categories.
+      return false;
     }
-    return filterState.videos.size === 0 || filterState.videos.has(fileType);
   } catch (error) {
     console.error("Error matching filter:", error);
     return false;
   }
+};
+
+/**
+ * Sorts detected medias based on the current sort option
+ * @returns {Array} Sorted array of media objects
+ */
+const getSortedMedias = () => {
+  const medias = Array.from(detectedMedias.values());
+  switch (currentSort) {
+    case SORT_OPTIONS.DATE_DESC:
+      medias.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      break;
+    case SORT_OPTIONS.DATE_ASC:
+      medias.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      break;
+    case SORT_OPTIONS.SIZE_DESC:
+      medias.sort((a, b) => (b.size || 0) - (a.size || 0));
+      break;
+    case SORT_OPTIONS.SIZE_ASC:
+      medias.sort((a, b) => (a.size || 0) - (b.size || 0));
+      break;
+    case SORT_OPTIONS.TYPE_ASC:
+      medias.sort((a, b) => {
+        const extA = (a.extension || "").toLowerCase();
+        const extB = (b.extension || "").toLowerCase();
+        return extA.localeCompare(extB);
+      });
+      break;
+    case SORT_OPTIONS.TYPE_DESC:
+      medias.sort((a, b) => {
+        const extA = (a.extension || "").toLowerCase();
+        const extB = (b.extension || "").toLowerCase();
+        return extB.localeCompare(extA);
+      });
+      break;
+    default:
+      medias.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }
+  return medias;
 };
 
 const applyFilter = () => {
@@ -232,10 +333,9 @@ const updateChipCounts = () => {
     if (!mediaPanel) return;
     let videoCount = 0, imageCount = 0, audioCount = 0;
     detectedMedias.forEach((media) => {
-      const fileType = getMediaType(media);
-      const mime = media.mime || "";
-      if (MEDIA_TYPES.IMAGE.includes(fileType) || mime.includes("image/")) imageCount++;
-      else if (MEDIA_TYPES.AUDIO.includes(fileType) || mime.includes("audio/")) audioCount++;
+      const category = getMediaCategory(media);
+      if (category === "images") imageCount++;
+      else if (category === "audio") audioCount++;
       else videoCount++;
     });
 
@@ -266,6 +366,8 @@ const ICONS = {
   close: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>',
   minimize: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>',
   maximize: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>',
+  sort: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>',
+  trash: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>',
 };
 
 /**
@@ -371,7 +473,7 @@ const previewMedia = (media) => {
     header.appendChild(title);
     header.appendChild(closeBtn);
 
-    // Body
+    // Body - scrollable to handle overflow
     const body = document.createElement("div");
     body.className = "vdp-preview-body";
 
@@ -409,6 +511,7 @@ const previewMedia = (media) => {
     previewContainer.appendChild(header);
     previewContainer.appendChild(body);
     previewContainer.appendChild(footer);
+
     previewOverlay.appendChild(previewContainer);
 
     // Close on backdrop click
@@ -704,6 +807,46 @@ const updateChipDropdowns = () => {
   });
 };
 
+const createSortDropdown = () => {
+  const sortBar = document.createElement("div");
+  sortBar.className = "vdp-sort-bar";
+
+  const sortLabel = document.createElement("label");
+  sortLabel.className = "vdp-sort-label";
+  sortLabel.textContent = "Sort:";
+
+  const sortSelect = document.createElement("select");
+  sortSelect.className = "vdp-sort-select";
+
+  const options = [
+    { value: SORT_OPTIONS.DATE_DESC, text: "Newest first" },
+    { value: SORT_OPTIONS.DATE_ASC, text: "Oldest first" },
+    { value: SORT_OPTIONS.SIZE_DESC, text: "Largest first" },
+    { value: SORT_OPTIONS.SIZE_ASC, text: "Smallest first" },
+    { value: SORT_OPTIONS.TYPE_ASC, text: "Type A-Z" },
+    { value: SORT_OPTIONS.TYPE_DESC, text: "Type Z-A" },
+  ];
+
+  options.forEach(({ value, text }) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = text;
+    if (value === currentSort) opt.selected = true;
+    sortSelect.appendChild(opt);
+  });
+
+  sortSelect.addEventListener("change", () => {
+    currentSort = sortSelect.value;
+    saveSortOption();
+    renderAllMediaToPanel();
+  });
+
+  sortBar.appendChild(sortLabel);
+  sortBar.appendChild(sortSelect);
+
+  return sortBar;
+};
+
 const createMediaPanel = () => {
   try {
     mediaPanel = document.createElement("div");
@@ -808,6 +951,9 @@ const createMediaPanel = () => {
     mediaCounter.innerHTML = '<span class="vdp-counter-count">0</span> found';
     filterBar.appendChild(mediaCounter);
 
+    // Sort bar
+    const sortBar = createSortDropdown();
+
     // Content
     const content = document.createElement("div");
     content.className = "vdp-content";
@@ -824,13 +970,38 @@ const createMediaPanel = () => {
     // Footer
     const footer = document.createElement("div");
     footer.className = "vdp-footer";
+
     const mediaCount = document.createElement("div");
     mediaCount.className = "vdp-media-count";
     mediaCount.textContent = "0 medias";
+
+    const footerActions = document.createElement("div");
+    footerActions.className = "vdp-footer-actions";
+
+    // Clear All button
+    const clearAllBtn = document.createElement("button");
+    clearAllBtn.className = "vdp-footer-btn vdp-danger-btn";
+    clearAllBtn.textContent = "Clear All";
+    clearAllBtn.title = "Clear all detected media";
+    clearAllBtn.addEventListener("click", () => {
+      if (confirm("Are you sure you want to clear all detected media for this page?")) {
+        chrome.runtime.sendMessage({ action: "clearMedias", tabId: getTabId() }, (response) => {
+          if (response && response.success) {
+            detectedMedias.clear();
+            renderAllMediaToPanel();
+            showNotification("All media cleared");
+          }
+        });
+      }
+    });
+
+    footerActions.appendChild(clearAllBtn);
     footer.appendChild(mediaCount);
+    footer.appendChild(footerActions);
 
     mediaPanel.appendChild(header);
     mediaPanel.appendChild(filterBar);
+    mediaPanel.appendChild(sortBar);
     mediaPanel.appendChild(content);
     mediaPanel.appendChild(footer);
 
@@ -865,6 +1036,15 @@ const createMediaPanel = () => {
     document.body.appendChild(fallback);
     return { panel: fallback, content: fallback, emptyState: null, mediaList: null };
   }
+};
+
+/**
+ * Helper to get current tab ID (best effort from URL)
+ */
+const getTabId = () => {
+  // In content scripts we don't have direct access to tab ID,
+  // but we can send a message without it and let background handle it
+  return undefined;
 };
 
 /**
@@ -1045,7 +1225,9 @@ const renderAllMediaToPanel = () => {
     mediaList.className = "vdp-media-list";
     content.appendChild(mediaList);
 
-    detectedMedias.forEach((media) => {
+    // Sort medias before rendering
+    const sortedMedias = getSortedMedias();
+    sortedMedias.forEach((media) => {
       const item = createMediaItem(media);
       if (item) mediaList.appendChild(item);
     });
@@ -1100,7 +1282,7 @@ const initialize = () => {
     isInitialized = true;
     currentPageUrl = window.location.href;
 
-    // Load saved filter state
+    // Load saved filter state and sort option
     loadFilterState();
 
     chrome.runtime.onMessage.addListener(handleBackgroundMessages);

@@ -5,13 +5,14 @@ body {
   background-color: #222;
   color: #eee;
   width: 450px;
-  max-height: 500px;
+  max-height: 550px;
   overflow: hidden;
 }
 .container {
   display: flex;
   flex-direction: column;
   height: 100%;
+  max-height: 550px;
 }
 .header {
   background-color: #0047ab;
@@ -28,7 +29,7 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  max-height: calc(340px - 43px);
+  max-height: calc(390px - 43px);
   background-color: #222;
 }
 .empty-state {
@@ -170,6 +171,12 @@ body {
 .footer-btn:hover {
   color: #7ab5ff;
   text-decoration: underline;
+}
+.footer-btn.danger {
+  color: #e74c3c;
+}
+.footer-btn.danger:hover {
+  color: #ff6b6b;
 }
 .tooltip {
   position: relative;
@@ -372,6 +379,43 @@ body {
   border-color: #555;
 }
 
+/* ===== SORT BAR ===== */
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #252525;
+  border-bottom: 1px solid #333;
+}
+
+.sort-label {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+}
+
+.sort-select {
+  flex: 1;
+  padding: 4px 8px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.sort-select:hover {
+  border-color: #555;
+}
+
+.sort-select:focus {
+  border-color: #0047ab;
+}
+
 /* ===== TABS ===== */
 .tabs-container {
   background-color: #333;
@@ -509,6 +553,7 @@ body {
   justify-content: center;
   align-items: center;
   z-index: 1001;
+  overflow: hidden;
 }
 .preview-modal.active {
   display: flex;
@@ -518,7 +563,7 @@ body {
   border-radius: 8px;
   width: 95%;
   max-width: 420px;
-  max-height: 90%;
+  max-height: 95%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -531,6 +576,7 @@ body {
   padding: 10px 14px;
   background: #1a1a1a;
   border-bottom: 1px solid #333;
+  flex-shrink: 0;
 }
 .preview-header h3 {
   margin: 0;
@@ -566,14 +612,14 @@ body {
   align-items: center;
   justify-content: center;
   background: #111;
-  min-height: 120px;
-  max-height: 300px;
-  overflow: hidden;
+  min-height: 100px;
+  max-height: 350px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .preview-body video,
 .preview-body audio {
   width: 100%;
-  max-height: 300px;
   outline: none;
 }
 .preview-body audio {
@@ -582,7 +628,6 @@ body {
 }
 .preview-body img {
   max-width: 100%;
-  max-height: 300px;
   object-fit: contain;
 }
 .preview-footer {
@@ -590,6 +635,7 @@ body {
   background: #1a1a1a;
   border-top: 1px solid #333;
   text-align: center;
+  flex-shrink: 0;
 }
 .preview-open-link {
   color: #4a9cf7;
@@ -604,7 +650,7 @@ body {
 .saved-media-content {
   flex: 1;
   overflow-y: auto;
-  max-height: calc(340px - 43px);
+  max-height: calc(390px - 43px);
   background-color: #222;
 }
 

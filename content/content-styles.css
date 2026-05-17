@@ -142,7 +142,7 @@
 .vdp-content {
   overflow-y: auto;
   flex: 1;
-  max-height: calc(520px - 48px - 41px - 44px);
+  max-height: calc(520px - 48px - 41px - 44px - 30px);
   padding: 0;
   background: #222;
 }
@@ -338,7 +338,41 @@
 .vdp-counter-count { font-weight: bold; color: #fff; }
 
 /* ==============================
- * 9. PREVIEW OVERLAY
+ * 9. SORT BAR
+ * ============================== */
+
+.vdp-sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: #252525;
+  border-bottom: 1px solid #333;
+}
+
+.vdp-sort-label {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+}
+
+.vdp-sort-select {
+  flex: 1;
+  padding: 3px 6px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+}
+.vdp-sort-select:hover { border-color: #555; }
+.vdp-sort-select:focus { border-color: #0047ab; }
+
+/* ==============================
+ * 10. PREVIEW OVERLAY
  * ============================== */
 
 .vdp-preview-overlay {
@@ -360,7 +394,7 @@
   border-radius: 8px;
   width: 90%;
   max-width: 600px;
-  max-height: 80%;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -374,6 +408,7 @@
   padding: 10px 14px;
   background: #1a1a1a;
   border-bottom: 1px solid #333;
+  flex-shrink: 0;
 }
 .vdp-preview-title {
   font-size: 13px;
@@ -404,19 +439,21 @@
   align-items: center;
   justify-content: center;
   background: #111;
-  min-height: 150px;
-  max-height: 400px;
-  overflow: hidden;
+  min-height: 100px;
+  max-height: calc(80vh - 100px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
-.vdp-preview-body video { width: 100%; max-height: 400px; outline: none; }
+.vdp-preview-body video { width: 100%; max-height: calc(80vh - 100px); outline: none; }
 .vdp-preview-body audio { padding: 30px; width: 90%; }
-.vdp-preview-body img { max-width: 100%; max-height: 400px; object-fit: contain; }
+.vdp-preview-body img { max-width: 100%; object-fit: contain; }
 
 .vdp-preview-footer {
   padding: 8px 14px;
   background: #1a1a1a;
   border-top: 1px solid #333;
   text-align: center;
+  flex-shrink: 0;
 }
 .vdp-preview-link {
   color: #4a9cf7;
@@ -426,7 +463,7 @@
 .vdp-preview-link:hover { text-decoration: underline; }
 
 /* ==============================
- * 10. FOOTER
+ * 11. FOOTER
  * ============================== */
 
 .vdp-footer {
@@ -441,8 +478,31 @@
 }
 .vdp-media-count { font-weight: 500; }
 
+.vdp-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vdp-footer-btn {
+  background: none;
+  border: none;
+  color: #4a9cf7;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 0;
+}
+.vdp-footer-btn:hover { text-decoration: underline; }
+
+.vdp-danger-btn {
+  color: #e74c3c;
+}
+.vdp-danger-btn:hover {
+  color: #ff6b6b;
+}
+
 /* ==============================
- * 11. RESPONSIVE ADJUSTMENTS
+ * 12. RESPONSIVE ADJUSTMENTS
  * ============================== */
 
 @media (max-width: 480px) {

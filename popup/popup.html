@@ -63,6 +63,19 @@
           <button class="reset-btn" id="resetFiltersBtn" title="Reset all filters">Reset</button>
         </div>
 
+        <!-- Sort Bar -->
+        <div class="sort-bar">
+          <label class="sort-label" for="sortSelect">Sort:</label>
+          <select class="sort-select" id="sortSelect">
+            <option value="date_desc">Newest first</option>
+            <option value="date_asc">Oldest first</option>
+            <option value="size_desc">Largest first</option>
+            <option value="size_asc">Smallest first</option>
+            <option value="type_asc">Type A-Z</option>
+            <option value="type_desc">Type Z-A</option>
+          </select>
+        </div>
+
         <!-- Media Content -->
         <div class="content" id="content">
           <div class="empty-state" id="emptyState">
@@ -86,6 +99,7 @@
             <span id="mediaCount">0 medias</span>
           </div>
           <div class="footer-actions">
+            <button class="footer-btn danger" id="clearAllBtn">Clear All</button>
             <button class="footer-btn" id="showInPageBtn">Show in page</button>
             <div class="tooltip">
               <button class="footer-btn" id="refreshBtn">Refresh</button>
@@ -124,7 +138,7 @@
             <span id="savedMediaCount">0 saved</span>
           </div>
           <div class="footer-actions">
-            <button class="footer-btn" id="clearSavedBtn">Clear All</button>
+            <button class="footer-btn danger" id="clearSavedBtn">Clear All</button>
           </div>
         </div>
       </div>

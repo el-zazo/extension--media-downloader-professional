@@ -24,10 +24,24 @@ export const DEFAULT_FILTER = "all";
 // Default tab
 export const DEFAULT_TAB = "detected";
 
+// Sort options
+export const SORT_OPTIONS = {
+  DATE_DESC: "date_desc",   // Newest first
+  DATE_ASC: "date_asc",     // Oldest first
+  SIZE_DESC: "size_desc",   // Largest first
+  SIZE_ASC: "size_asc",     // Smallest first
+  TYPE_ASC: "type_asc",     // Type A-Z
+  TYPE_DESC: "type_desc",   // Type Z-A
+};
+
+// Default sort option
+export const DEFAULT_SORT = SORT_OPTIONS.DATE_DESC;
+
 // Storage keys
 export const STORAGE_KEYS = {
   SAVED_MEDIA: "savedMedia",
   FILTER_STATE: "filterState",
+  SORT_OPTION: "sortOption",
 };
 
 // Message actions
