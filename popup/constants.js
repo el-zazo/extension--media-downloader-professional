@@ -42,6 +42,8 @@ export const STORAGE_KEYS = {
   SAVED_MEDIA: "savedMedia",
   FILTER_STATE: "filterState",
   SORT_OPTION: "sortOption",
+  SAVED_FILTER_STATE: "savedFilterState",
+  SAVED_SORT_OPTION: "savedSortOption",
 };
 
 // Message actions

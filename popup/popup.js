@@ -27,6 +27,7 @@ const escapeHTML = (str) => {
     .replace(/'/g, '&#039;');
 };
 
+// ===== DETECTED MEDIA FILTER & SORT STATE =====
 // Filter state: each category maps to a Set of selected extensions.
 // An empty Set means "show all" for that category.
 let filterState = {
@@ -35,8 +36,19 @@ let filterState = {
   audio: new Set(),
 };
 
-// Current sort option
+// Current sort option for detected media
 let currentSort = DEFAULT_SORT;
+
+// ===== SAVED MEDIA FILTER & SORT STATE =====
+// Separate filter state for saved media tab
+let savedFilterState = {
+  videos: new Set(),
+  images: new Set(),
+  audio: new Set(),
+};
+
+// Current sort option for saved media
+let savedCurrentSort = DEFAULT_SORT;
 
 // Track active tab
 let activeTab = DEFAULT_TAB;
@@ -45,18 +57,24 @@ let activeTab = DEFAULT_TAB;
 let currentSaveUrl = "";
 let suggestedFilename = "";
 
-// Currently open chip dropdown (only one at a time)
+// Currently open chip dropdown (only one at a time, across both tabs)
 let openDropdown = null;
+let openDropdownSection = null; // "detected" or "saved"
 
 // ===== FILTER & SORT STATE PERSISTENCE =====
 
 /**
- * Loads the saved filter state from chrome.storage.local
+ * Loads the saved filter state and sort options from chrome.storage.local
+ * for both detected and saved media sections
  * @returns {Promise<void>}
  */
 const loadFilterState = () => {
   return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEYS.FILTER_STATE, STORAGE_KEYS.SORT_OPTION], (result) => {
+    chrome.storage.local.get([
+      STORAGE_KEYS.FILTER_STATE, STORAGE_KEYS.SORT_OPTION,
+      STORAGE_KEYS.SAVED_FILTER_STATE, STORAGE_KEYS.SAVED_SORT_OPTION,
+    ], (result) => {
+      // Detected media filter state
       if (result[STORAGE_KEYS.FILTER_STATE]) {
         const saved = result[STORAGE_KEYS.FILTER_STATE];
         filterState.videos = new Set(saved.videos || []);
@@ -66,13 +84,23 @@ const loadFilterState = () => {
       if (result[STORAGE_KEYS.SORT_OPTION] && Object.values(SORT_OPTIONS).includes(result[STORAGE_KEYS.SORT_OPTION])) {
         currentSort = result[STORAGE_KEYS.SORT_OPTION];
       }
+      // Saved media filter state
+      if (result[STORAGE_KEYS.SAVED_FILTER_STATE]) {
+        const saved = result[STORAGE_KEYS.SAVED_FILTER_STATE];
+        savedFilterState.videos = new Set(saved.videos || []);
+        savedFilterState.images = new Set(saved.images || []);
+        savedFilterState.audio = new Set(saved.audio || []);
+      }
+      if (result[STORAGE_KEYS.SAVED_SORT_OPTION] && Object.values(SORT_OPTIONS).includes(result[STORAGE_KEYS.SAVED_SORT_OPTION])) {
+        savedCurrentSort = result[STORAGE_KEYS.SAVED_SORT_OPTION];
+      }
       resolve();
     });
   });
 };
 
 /**
- * Saves the current filter state to chrome.storage.local
+ * Saves the detected media filter state to chrome.storage.local
  */
 const saveFilterState = () => {
   const state = {
@@ -84,32 +112,71 @@ const saveFilterState = () => {
 };
 
 /**
- * Saves the current sort option to chrome.storage.local
+ * Saves the detected media sort option to chrome.storage.local
  */
 const saveSortOption = () => {
   chrome.storage.local.set({ [STORAGE_KEYS.SORT_OPTION]: currentSort });
 };
 
 /**
- * Resets all filter selections and saves the state
+ * Saves the saved media filter state to chrome.storage.local
+ */
+const saveSavedFilterState = () => {
+  const state = {
+    videos: Array.from(savedFilterState.videos),
+    images: Array.from(savedFilterState.images),
+    audio: Array.from(savedFilterState.audio),
+  };
+  chrome.storage.local.set({ [STORAGE_KEYS.SAVED_FILTER_STATE]: state });
+};
+
+/**
+ * Saves the saved media sort option to chrome.storage.local
+ */
+const saveSavedSortOption = () => {
+  chrome.storage.local.set({ [STORAGE_KEYS.SAVED_SORT_OPTION]: savedCurrentSort });
+};
+
+/**
+ * Resets all detected media filter selections and saves the state
  */
 const resetFilters = () => {
   filterState.videos.clear();
   filterState.images.clear();
   filterState.audio.clear();
   saveFilterState();
-  updateFilterUI();
+  updateFilterUI("detected");
   loadMedias();
+};
+
+/**
+ * Resets all saved media filter selections and saves the state
+ */
+const resetSavedFilters = () => {
+  savedFilterState.videos.clear();
+  savedFilterState.images.clear();
+  savedFilterState.audio.clear();
+  saveSavedFilterState();
+  updateFilterUI("saved");
+  loadSavedMedia();
 };
 
 // ===== CHECK IF ANY FILTER IS ACTIVE =====
 
 /**
  * Returns true if at least one category has specific filters selected
- * (i.e., not "show all" for every category)
+ * for the detected media section
  */
 const isAnyFilterActive = () => {
   return filterState.videos.size > 0 || filterState.images.size > 0 || filterState.audio.size > 0;
+};
+
+/**
+ * Returns true if at least one category has specific filters selected
+ * for the saved media section
+ */
+const isAnySavedFilterActive = () => {
+  return savedFilterState.videos.size > 0 || savedFilterState.images.size > 0 || savedFilterState.audio.size > 0;
 };
 
 // ===== MEDIA OPERATIONS =====
@@ -281,20 +348,22 @@ const closePreview = () => {
 // ===== SORT LOGIC =====
 
 /**
- * Sorts an array of media items based on the current sort option
+ * Sorts an array of media items based on the given sort option
  * @param {Array} medias - Array of media objects
+ * @param {string} sortOption - The sort option to use
+ * @param {string} dateField - The field name for date sorting ("timestamp" or "savedAt")
  * @returns {Array} - Sorted array
  */
-const sortMedias = (medias) => {
+const sortMediasByOption = (medias, sortOption, dateField = "timestamp") => {
   if (!Array.isArray(medias)) return [];
 
   const sorted = [...medias];
-  switch (currentSort) {
+  switch (sortOption) {
     case SORT_OPTIONS.DATE_DESC:
-      sorted.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      sorted.sort((a, b) => (b[dateField] || b.timestamp || 0) - (a[dateField] || a.timestamp || 0));
       break;
     case SORT_OPTIONS.DATE_ASC:
-      sorted.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      sorted.sort((a, b) => ((a[dateField] || a.timestamp || 0) - (b[dateField] || b.timestamp || 0)));
       break;
     case SORT_OPTIONS.SIZE_DESC:
       sorted.sort((a, b) => (b.size || 0) - (a.size || 0));
@@ -317,11 +386,20 @@ const sortMedias = (medias) => {
       });
       break;
     default:
-      // Default: newest first
-      sorted.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      sorted.sort((a, b) => (b[dateField] || b.timestamp || 0) - (a[dateField] || a.timestamp || 0));
   }
   return sorted;
 };
+
+/**
+ * Sorts an array of media items based on the detected media current sort option
+ */
+const sortMedias = (medias) => sortMediasByOption(medias, currentSort, "timestamp");
+
+/**
+ * Sorts an array of saved media items based on the saved media current sort option
+ */
+const sortSavedMedias = (medias) => sortMediasByOption(medias, savedCurrentSort, "savedAt");
 
 // ===== MEDIA ITEM UI =====
 
@@ -485,48 +563,44 @@ const getMediaCategory = (media) => {
 };
 
 /**
- * Checks if a media item matches the current filter state.
- *
- * KEY FIX: When ANY category has specific filters selected (size > 0),
- * only items that match those specific filters are shown.
- * Categories with no specific filters selected will NOT show their items
- * when other categories are filtered.
- *
- * When NO category has any specific filters (all empty = show all),
- * then everything is displayed.
- *
- * @param {Object} media - The media object
- * @returns {boolean}
+ * Checks if a media item matches the detected media filter state
  */
 const matchesFilter = (media) => {
   const fileType = getFileType(media);
   const category = getMediaCategory(media);
 
-  // If no filters are active anywhere, show everything
-  if (!isAnyFilterActive()) {
-    return true;
-  }
+  if (!isAnyFilterActive()) return true;
 
-  // Check if this media's category has specific filters
   const categoryFilter = filterState[category];
-
   if (categoryFilter.size > 0) {
-    // This category has specific filters - only show matching items
     return categoryFilter.has(fileType);
   } else {
-    // This category has NO specific filters, but other categories DO.
-    // Since the user explicitly filtered something, we should NOT show
-    // unfiltered categories (they didn't select these).
     return false;
   }
 };
 
 /**
- * Applies the current filter and sort to the media list and updates the UI
+ * Checks if a saved media item matches the saved media filter state
+ */
+const matchesSavedFilter = (media) => {
+  const fileType = getFileType(media);
+  const category = getMediaCategory(media);
+
+  if (!isAnySavedFilterActive()) return true;
+
+  const categoryFilter = savedFilterState[category];
+  if (categoryFilter.size > 0) {
+    return categoryFilter.has(fileType);
+  } else {
+    return false;
+  }
+};
+
+/**
+ * Applies the current filter and sort to the detected media list and updates the UI
  * @param {Array} medias - All media items for the current tab
  */
 const applyFilter = (medias) => {
-  const filterCount = document.getElementById("filterCount");
   const mediaList = document.getElementById("mediaList");
   const emptyState = document.getElementById("emptyState");
 
@@ -537,7 +611,7 @@ const applyFilter = (medias) => {
   const sortedMedias = sortMedias(filteredMedias);
 
   // Update category counts on chips
-  updateChipCounts(medias);
+  updateChipCounts(medias, "detected");
 
   // Clear previous list items
   mediaList.innerHTML = "";
@@ -582,10 +656,11 @@ const applyFilter = (medias) => {
 };
 
 /**
- * Updates the count badges on each filter chip
+ * Updates the count badges on each filter chip for a given section
  * @param {Array} medias - All media items
+ * @param {string} section - "detected" or "saved"
  */
-const updateChipCounts = (medias) => {
+const updateChipCounts = (medias, section) => {
   let videoCount = 0, imageCount = 0, audioCount = 0;
   medias.forEach((media) => {
     const category = getMediaCategory(media);
@@ -594,9 +669,11 @@ const updateChipCounts = (medias) => {
     else videoCount++;
   });
 
-  const vc = document.querySelector('.chip-count[data-category="videos"]');
-  const ic = document.querySelector('.chip-count[data-category="images"]');
-  const ac = document.querySelector('.chip-count[data-category="audio"]');
+  const sectionAttr = section === "saved" ? '[data-section="saved"]' : ':not([data-section])';
+  const vc = document.querySelector(`.chip-count[data-category="videos"]${sectionAttr}`) ||
+             document.querySelector(`.chip-count[data-category="videos"][data-section="${section}"]`);
+  const ic = document.querySelector(`.chip-count[data-category="images"][data-section="${section}"]`);
+  const ac = document.querySelector(`.chip-count[data-category="audio"][data-section="${section}"]`);
   if (vc) vc.textContent = videoCount;
   if (ic) ic.textContent = imageCount;
   if (ac) ac.textContent = audioCount;
@@ -605,17 +682,20 @@ const updateChipCounts = (medias) => {
 // ===== FILTER CHIP DROPDOWN SETUP =====
 
 /**
- * Populates the chip dropdown checkboxes for each category
+ * Populates the chip dropdown checkboxes for each category in a section
+ * @param {string} section - "detected" or "saved"
  */
-const setupFilterChips = () => {
+const setupFilterChips = (section) => {
   const categories = {
     videos: VIDEO_EXTENSIONS,
     images: IMAGE_EXTENSIONS,
     audio: AUDIO_EXTENSIONS,
   };
 
+  const currentFilterState = section === "saved" ? savedFilterState : filterState;
+
   Object.entries(categories).forEach(([category, extensions]) => {
-    const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"]`);
+    const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"][data-section="${section}"]`);
     if (!dropdown) return;
 
     dropdown.innerHTML = "";
@@ -625,25 +705,30 @@ const setupFilterChips = () => {
     selectAllLabel.className = "select-all-label";
     const selectAllCheckbox = document.createElement("input");
     selectAllCheckbox.type = "checkbox";
-    selectAllCheckbox.checked = filterState[category].size === 0;
+    selectAllCheckbox.checked = currentFilterState[category].size === 0;
     selectAllCheckbox.addEventListener("change", () => {
       if (selectAllCheckbox.checked) {
-        filterState[category].clear(); // empty = show all
+        currentFilterState[category].clear();
         extensions.forEach((ext) => {
           const cb = dropdown.querySelector(`input[data-ext="${ext}"]`);
           if (cb) cb.checked = false;
         });
       } else {
-        // Deselecting "all" => select none
-        extensions.forEach((ext) => filterState[category].add(ext));
+        extensions.forEach((ext) => currentFilterState[category].add(ext));
         extensions.forEach((ext) => {
           const cb = dropdown.querySelector(`input[data-ext="${ext}"]`);
           if (cb) cb.checked = true;
         });
       }
-      saveFilterState();
-      updateChipActiveState(category);
-      loadMedias();
+      if (section === "saved") {
+        saveSavedFilterState();
+        updateChipActiveState(category, "saved");
+        loadSavedMedia();
+      } else {
+        saveFilterState();
+        updateChipActiveState(category, "detected");
+        loadMedias();
+      }
     });
     selectAllLabel.appendChild(selectAllCheckbox);
     selectAllLabel.appendChild(document.createTextNode("Show All"));
@@ -655,18 +740,24 @@ const setupFilterChips = () => {
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.dataset.ext = ext;
-      checkbox.checked = filterState[category].has(ext);
+      checkbox.checked = currentFilterState[category].has(ext);
       checkbox.addEventListener("change", () => {
         if (checkbox.checked) {
-          filterState[category].add(ext);
+          currentFilterState[category].add(ext);
         } else {
-          filterState[category].delete(ext);
+          currentFilterState[category].delete(ext);
         }
         // Update "Select All" state
-        selectAllCheckbox.checked = filterState[category].size === 0;
-        saveFilterState();
-        updateChipActiveState(category);
-        loadMedias();
+        selectAllCheckbox.checked = currentFilterState[category].size === 0;
+        if (section === "saved") {
+          saveSavedFilterState();
+          updateChipActiveState(category, "saved");
+          loadSavedMedia();
+        } else {
+          saveFilterState();
+          updateChipActiveState(category, "detected");
+          loadMedias();
+        }
       });
       label.appendChild(checkbox);
       label.appendChild(document.createTextNode(ext.toUpperCase()));
@@ -678,13 +769,15 @@ const setupFilterChips = () => {
 /**
  * Updates the active/inactive visual state of a chip button
  * @param {string} category - The category name
+ * @param {string} section - "detected" or "saved"
  */
-const updateChipActiveState = (category) => {
-  const chipBtn = document.querySelector(`.chip-btn[data-category="${category}"]`);
+const updateChipActiveState = (category, section) => {
+  const chipBtn = document.querySelector(`.chip-btn[data-category="${category}"][data-section="${section}"]`);
   if (!chipBtn) return;
 
-  // Chip is "active" (highlighted) when specific filters are selected
-  if (filterState[category].size > 0) {
+  const currentFilterState = section === "saved" ? savedFilterState : filterState;
+
+  if (currentFilterState[category].size > 0) {
     chipBtn.classList.add("active");
   } else {
     chipBtn.classList.remove("active");
@@ -692,22 +785,25 @@ const updateChipActiveState = (category) => {
 };
 
 /**
- * Updates all chip active states to match current filterState
+ * Updates all chip active states to match current filterState for a section
+ * @param {string} section - "detected" or "saved"
  */
-const updateFilterUI = () => {
+const updateFilterUI = (section) => {
+  const currentFilterState = section === "saved" ? savedFilterState : filterState;
+
   ["videos", "images", "audio"].forEach((category) => {
-    updateChipActiveState(category);
+    updateChipActiveState(category, section);
     // Update checkboxes in dropdown
-    const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"]`);
+    const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"][data-section="${section}"]`);
     if (!dropdown) return;
 
     const selectAllCb = dropdown.querySelector(".select-all-label input");
-    if (selectAllCb) selectAllCb.checked = filterState[category].size === 0;
+    if (selectAllCb) selectAllCb.checked = currentFilterState[category].size === 0;
 
     const extensions = category === "videos" ? VIDEO_EXTENSIONS : category === "images" ? IMAGE_EXTENSIONS : AUDIO_EXTENSIONS;
     extensions.forEach((ext) => {
       const cb = dropdown.querySelector(`input[data-ext="${ext}"]`);
-      if (cb) cb.checked = filterState[category].has(ext);
+      if (cb) cb.checked = currentFilterState[category].has(ext);
     });
   });
 };
@@ -716,24 +812,26 @@ const updateFilterUI = () => {
  * Toggles a chip dropdown open/closed
  * Uses position:fixed for the dropdown to escape overflow clipping
  * @param {string} category - The category to toggle
+ * @param {string} section - "detected" or "saved"
  */
-const toggleChipDropdown = (category) => {
-  // Close any other open dropdown
-  if (openDropdown && openDropdown !== category) {
-    const prevDropdown = document.querySelector(`.chip-dropdown[data-category="${openDropdown}"]`);
-    const prevBtn = document.querySelector(`.chip-btn[data-category="${openDropdown}"]`);
+const toggleChipDropdown = (category, section) => {
+  // Close any other open dropdown (across both sections)
+  if (openDropdown && (openDropdown !== category || openDropdownSection !== section)) {
+    const prevDropdown = document.querySelector(`.chip-dropdown[data-category="${openDropdown}"][data-section="${openDropdownSection}"]`);
+    const prevBtn = document.querySelector(`.chip-btn[data-category="${openDropdown}"][data-section="${openDropdownSection}"]`);
     if (prevDropdown) prevDropdown.classList.remove("open");
     if (prevBtn) prevBtn.classList.remove("open");
   }
 
-  const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"]`);
-  const chipBtn = document.querySelector(`.chip-btn[data-category="${category}"]`);
+  const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"][data-section="${section}"]`);
+  const chipBtn = document.querySelector(`.chip-btn[data-category="${category}"][data-section="${section}"]`);
 
   if (dropdown && chipBtn) {
     const isOpen = dropdown.classList.contains("open");
     dropdown.classList.toggle("open");
     chipBtn.classList.toggle("open");
     openDropdown = isOpen ? null : category;
+    openDropdownSection = isOpen ? null : section;
 
     // Position the fixed dropdown relative to the chip button
     if (!isOpen) {
@@ -768,24 +866,56 @@ const loadMedias = () => {
   });
 };
 
-// Load saved media from storage
+// Load saved media from storage with filter and sort
 const loadSavedMedia = () => {
   const savedMediaList = document.getElementById("savedMediaList");
   const savedEmptyState = document.getElementById("savedEmptyState");
   const savedMediaCount = document.getElementById("savedMediaCount");
 
   chrome.storage.local.get([STORAGE_KEYS.SAVED_MEDIA], (result) => {
-    const savedMedia = result.savedMedia || [];
-    if (savedMedia.length === 0) {
-      savedEmptyState.style.display = "block";
+    const allSavedMedia = result.savedMedia || [];
+
+    // Apply filter
+    const filteredSavedMedia = allSavedMedia.filter((media) => matchesSavedFilter(media));
+
+    // Apply sort
+    const sortedSavedMedia = sortSavedMedias(filteredSavedMedia);
+
+    // Update chip counts for saved section
+    updateChipCounts(allSavedMedia, "saved");
+
+    if (sortedSavedMedia.length === 0) {
       savedMediaList.style.display = "none";
-      savedMediaCount.textContent = "0 saved";
+      savedEmptyState.style.display = "block";
+
+      if (allSavedMedia.length > 0) {
+        savedEmptyState.innerHTML = `
+          <div class="empty-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+          </div>
+          <div>No saved media matches the current filter.</div>
+          <div style="margin-top: 8px; font-size: 12px">Try adjusting the filter or click Reset.</div>
+        `;
+      } else {
+        savedEmptyState.innerHTML = `
+          <div class="empty-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <div>No saved media yet.</div>
+          <div style="margin-top: 8px; font-size: 12px">Use the save button to save media for later.</div>
+        `;
+      }
+      savedMediaCount.textContent = `${allSavedMedia.length} saved`;
     } else {
       savedEmptyState.style.display = "none";
       savedMediaList.style.display = "block";
-      savedMediaCount.textContent = `${savedMedia.length} saved`;
+      savedMediaCount.textContent = `${allSavedMedia.length} saved`;
       savedMediaList.innerHTML = "";
-      savedMedia.forEach((media, index) => {
+      sortedSavedMedia.forEach((media, index) => {
         const item = createSavedMediaItem(media, index);
         savedMediaList.appendChild(item);
       });
@@ -880,51 +1010,80 @@ const switchTab = (tab) => {
 // ===== INITIALIZATION =====
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Load saved filter state and sort option, then setup UI
+  // Load saved filter states and sort options, then setup UI
   loadFilterState().then(() => {
-    setupFilterChips();
-    updateFilterUI();
+    // Setup detected media filter chips
+    setupFilterChips("detected");
+    updateFilterUI("detected");
 
-    // Restore sort dropdown to saved value
+    // Setup saved media filter chips
+    setupFilterChips("saved");
+    updateFilterUI("saved");
+
+    // Restore detected sort dropdown to saved value
     const sortSelect = document.getElementById("sortSelect");
     if (sortSelect) {
       sortSelect.value = currentSort;
     }
+
+    // Restore saved sort dropdown to saved value
+    const savedSortSelect = document.getElementById("savedSortSelect");
+    if (savedSortSelect) {
+      savedSortSelect.value = savedCurrentSort;
+    }
   });
 
-  // Chip button click handlers
+  // Chip button click handlers for both sections
   document.querySelectorAll(".chip-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const category = btn.dataset.category;
-      toggleChipDropdown(category);
+      const section = btn.dataset.section || "detected";
+      toggleChipDropdown(category, section);
     });
   });
 
   // Close dropdown when clicking outside
   document.addEventListener("click", (e) => {
     if (openDropdown && !e.target.closest(".filter-chip")) {
-      const dropdown = document.querySelector(`.chip-dropdown[data-category="${openDropdown}"]`);
-      const chipBtn = document.querySelector(`.chip-btn[data-category="${openDropdown}"]`);
+      const dropdown = document.querySelector(`.chip-dropdown[data-category="${openDropdown}"][data-section="${openDropdownSection}"]`);
+      const chipBtn = document.querySelector(`.chip-btn[data-category="${openDropdown}"][data-section="${openDropdownSection}"]`);
       if (dropdown) dropdown.classList.remove("open");
       if (chipBtn) chipBtn.classList.remove("open");
       openDropdown = null;
+      openDropdownSection = null;
     }
   });
 
-  // Reset filters button
+  // Reset filters button - detected
   const resetBtn = document.getElementById("resetFiltersBtn");
   if (resetBtn) {
     resetBtn.addEventListener("click", resetFilters);
   }
 
-  // Sort select change handler
+  // Reset filters button - saved
+  const savedResetBtn = document.getElementById("savedResetFiltersBtn");
+  if (savedResetBtn) {
+    savedResetBtn.addEventListener("click", resetSavedFilters);
+  }
+
+  // Sort select change handler - detected
   const sortSelect = document.getElementById("sortSelect");
   if (sortSelect) {
     sortSelect.addEventListener("change", () => {
       currentSort = sortSelect.value;
       saveSortOption();
       loadMedias();
+    });
+  }
+
+  // Sort select change handler - saved
+  const savedSortSelect = document.getElementById("savedSortSelect");
+  if (savedSortSelect) {
+    savedSortSelect.addEventListener("change", () => {
+      savedCurrentSort = savedSortSelect.value;
+      saveSavedSortOption();
+      loadSavedMedia();
     });
   }
 
