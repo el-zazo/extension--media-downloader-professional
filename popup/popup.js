@@ -1,10 +1,11 @@
 /**
  * Media Downloader Professional - Popup Script
- * Handles the extension popup functionality
+ * Handles the extension popup functionality with multi-select filters
+ * and media preview/playback
  */
 
 // Constants
-import { IMAGE_EXTENSIONS, AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, MEDIA_EXTENSIONS, DEFAULT_FILTER, DEFAULT_TAB, STORAGE_KEYS, ACTIONS } from "./constants.js";
+import { IMAGE_EXTENSIONS, AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, MEDIA_EXTENSIONS, DEFAULT_TAB, STORAGE_KEYS, ACTIONS } from "./constants.js";
 
 // Icons
 import { ICONS } from "./icons.js";
@@ -26,34 +27,81 @@ const escapeHTML = (str) => {
     .replace(/'/g, '&#039;');
 };
 
-// Track active filter and tab
-let activeFilter = DEFAULT_FILTER;
+// Filter state: each category maps to a Set of selected extensions.
+// An empty Set means "show all" for that category.
+let filterState = {
+  videos: new Set(),
+  images: new Set(),
+  audio: new Set(),
+};
+
+// Track active tab
 let activeTab = DEFAULT_TAB;
 
 // Modal variables
 let currentSaveUrl = "";
 let suggestedFilename = "";
 
+// Currently open chip dropdown (only one at a time)
+let openDropdown = null;
+
+// ===== FILTER STATE PERSISTENCE =====
+
+/**
+ * Loads the saved filter state from chrome.storage.local
+ * @returns {Promise<void>}
+ */
+const loadFilterState = () => {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_KEYS.FILTER_STATE], (result) => {
+      if (result[STORAGE_KEYS.FILTER_STATE]) {
+        const saved = result[STORAGE_KEYS.FILTER_STATE];
+        filterState.videos = new Set(saved.videos || []);
+        filterState.images = new Set(saved.images || []);
+        filterState.audio = new Set(saved.audio || []);
+      }
+      resolve();
+    });
+  });
+};
+
+/**
+ * Saves the current filter state to chrome.storage.local
+ */
+const saveFilterState = () => {
+  const state = {
+    videos: Array.from(filterState.videos),
+    images: Array.from(filterState.images),
+    audio: Array.from(filterState.audio),
+  };
+  chrome.storage.local.set({ [STORAGE_KEYS.FILTER_STATE]: state });
+};
+
+/**
+ * Resets all filter selections and saves the state
+ */
+const resetFilters = () => {
+  filterState.videos.clear();
+  filterState.images.clear();
+  filterState.audio.clear();
+  saveFilterState();
+  updateFilterUI();
+  loadMedias();
+};
+
+// ===== MEDIA OPERATIONS =====
+
 // Save media to device with custom filename
 const saveMedia = (url, filename) => {
   try {
-    // Set current media info for the modal
     currentSaveUrl = url;
     suggestedFilename = filename;
-
-    // Set the URL display in the modal
     const saveModalUrl = document.getElementById("saveModalUrl");
     saveModalUrl.textContent = url;
-
-    // Set the suggested filename in the input field
     const customFilenameInput = document.getElementById("customFilename");
     customFilenameInput.value = filename;
-
-    // Show the modal
     const saveModal = document.getElementById("saveModal");
     saveModal.classList.add("active");
-
-    // Focus the input field
     customFilenameInput.focus();
     customFilenameInput.select();
   } catch (error) {
@@ -64,22 +112,13 @@ const saveMedia = (url, filename) => {
 
 // Add media to saved list and storage
 const addToSavedMedia = (media) => {
-  // Get current saved media from storage
   chrome.storage.local.get([STORAGE_KEYS.SAVED_MEDIA], (result) => {
     const savedMedia = result.savedMedia || [];
-
-    // Check if this URL is already saved
     const exists = savedMedia.some((item) => item.url === media.url);
-
     if (!exists) {
-      // Add to saved media list
       savedMedia.push(media);
-
-      // Save to storage
       chrome.storage.local.set({ [STORAGE_KEYS.SAVED_MEDIA]: savedMedia }, () => {
         ui.showNotification("Media saved to library");
-
-        // If we're on the saved tab, update the display
         if (activeTab === "saved") {
           loadSavedMedia();
         }
@@ -95,15 +134,9 @@ const removeSavedMedia = (url) => {
   if (confirm("Are you sure you want to remove this media from your library?")) {
     chrome.storage.local.get([STORAGE_KEYS.SAVED_MEDIA], (result) => {
       let savedMedia = result.savedMedia || [];
-
-      // Filter out the item with the matching URL
       savedMedia = savedMedia.filter((item) => item.url !== url);
-
-      // Save updated list to storage
       chrome.storage.local.set({ [STORAGE_KEYS.SAVED_MEDIA]: savedMedia }, () => {
         ui.showNotification("Media removed from library");
-
-        // Update the display
         loadSavedMedia();
       });
     });
@@ -113,10 +146,7 @@ const removeSavedMedia = (url) => {
 // Process the actual download
 const downloadMedia = (url, filename) => {
   try {
-    // Handle relative URLs
     const absoluteUrl = new URL(url, window.location.href).href;
-
-    // Send message to background script to handle download
     chrome.runtime
       .sendMessage({
         action: ACTIONS.DOWNLOAD_MEDIA,
@@ -136,52 +166,125 @@ const downloadMedia = (url, filename) => {
   }
 };
 
+// ===== MEDIA PREVIEW / PLAYBACK =====
+
+/**
+ * Opens the preview modal for a media item
+ * @param {Object} media - The media object to preview
+ */
+const previewMedia = (media) => {
+  try {
+    if (!media || !media.url) return;
+
+    const previewModal = document.getElementById("previewModal");
+    const previewTitle = document.getElementById("previewTitle");
+    const previewBody = document.getElementById("previewBody");
+    const previewOpenLink = document.getElementById("previewOpenLink");
+
+    const extension = (media.extension || "").toLowerCase();
+    const mime = media.mime || "";
+    const isImage = IMAGE_EXTENSIONS.includes(extension) || mime.includes("image/");
+    const isAudio = AUDIO_EXTENSIONS.includes(extension) || mime.includes("audio/");
+
+    // Set title
+    const typeLabel = isImage ? "Image" : isAudio ? "Audio" : "Video";
+    previewTitle.textContent = `${typeLabel} Preview — ${extension.toUpperCase()}`;
+
+    // Clear previous content
+    previewBody.innerHTML = "";
+
+    if (isImage) {
+      const img = document.createElement("img");
+      img.src = media.url;
+      img.alt = "Media preview";
+      img.onerror = () => {
+        previewBody.innerHTML = '<div style="color:#999;padding:20px;text-align:center;">Failed to load image</div>';
+      };
+      previewBody.appendChild(img);
+    } else if (isAudio) {
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.autoplay = true;
+      audio.src = media.url;
+      audio.onerror = () => {
+        previewBody.innerHTML = '<div style="color:#999;padding:20px;text-align:center;">Failed to load audio</div>';
+      };
+      previewBody.appendChild(audio);
+    } else {
+      // Video
+      const video = document.createElement("video");
+      video.controls = true;
+      video.autoplay = true;
+      video.style.width = "100%";
+      video.style.maxHeight = "300px";
+      video.src = media.url;
+      video.onerror = () => {
+        previewBody.innerHTML = '<div style="color:#999;padding:20px;text-align:center;">Failed to load video. Try opening in a new tab.</div>';
+      };
+      previewBody.appendChild(video);
+    }
+
+    // Set "Open in new tab" link
+    previewOpenLink.href = media.url;
+
+    // Show modal
+    previewModal.classList.add("active");
+  } catch (error) {
+    console.error("Error previewing media:", error);
+    ui.showNotification("Failed to preview media");
+  }
+};
+
+/**
+ * Closes the preview modal and stops any playing media
+ */
+const closePreview = () => {
+  const previewModal = document.getElementById("previewModal");
+  const previewBody = document.getElementById("previewBody");
+
+  // Stop any playing media
+  const video = previewBody.querySelector("video");
+  const audio = previewBody.querySelector("audio");
+  if (video) video.pause();
+  if (audio) audio.pause();
+
+  previewBody.innerHTML = "";
+  previewModal.classList.remove("active");
+};
+
+// ===== MEDIA ITEM UI =====
+
 // Create media item element
 const createMediaItem = (media, medias) => {
   const item = document.createElement("li");
   item.className = "media-item";
 
-  // Format for display
   const extension = media.extension || "unknown";
   const isAudio = media.mime && media.mime.includes("audio");
   const isImage = (media.mime && media.mime.includes("image")) || IMAGE_EXTENSIONS.includes(extension.toLowerCase());
 
-  // Count by media type (to match content-script.js behavior)
+  // Count by media type
   let imageCount = 0;
   let nonImageCount = 0;
 
-  // Function to check if an item is an image
-  const isItemImage = (item) => {
-    const ext = item.extension?.toLowerCase() || "";
-    const mime = item.mime || "";
-    return IMAGE_EXTENSIONS.includes(ext) || mime.includes("image/");
+  const isItemImage = (itm) => {
+    const ext = itm.extension?.toLowerCase() || "";
+    const m = itm.mime || "";
+    return IMAGE_EXTENSIONS.includes(ext) || m.includes("image/");
   };
 
-  // Count items by type before the current item
   for (let i = 0; i < medias.length; i++) {
-    const item = medias[i];
-    // Count until we reach the current item
-    if (item.url === media.url) {
-      break;
-    }
-    if (isItemImage(item)) {
-      imageCount++;
-    } else {
-      nonImageCount++;
-    }
+    const itm = medias[i];
+    if (itm.url === media.url) break;
+    if (isItemImage(itm)) imageCount++;
+    else nonImageCount++;
   }
 
-  // Determine the correct item number
   const typeCount = isImage ? imageCount + 1 : nonImageCount + 1;
   const title = isImage ? `Image ${typeCount}` : isAudio ? `Audio ${typeCount}` : `Video ${typeCount}`;
-
   const size = utils.formatFileSize(media.size);
   const datetime = utils.formatDateTime(media.timestamp || Date.now());
-
-  // Create shortened URL for display
   const displayUrl = media.url.length > 60 ? media.url.substring(0, 57) + "..." : media.url;
-
-  // Generate suggested filename
   const filename = `${isImage ? "image" : isAudio ? "audio" : "video"}_${typeCount}.${extension}`;
 
   item.innerHTML = `
@@ -198,6 +301,9 @@ const createMediaItem = (media, medias) => {
       </div>
     </div>
     <div class="media-actions">
+      <button class="action-btn preview-btn" title="Preview">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+      </button>
       <button class="action-btn download-btn" title="Download">
         ${ICONS.download}
       </button>
@@ -210,26 +316,17 @@ const createMediaItem = (media, medias) => {
     </div>
   `;
 
-  // Add event listener for copy button
+  const previewBtn = item.querySelector(".preview-btn");
+  previewBtn.addEventListener("click", (e) => { e.stopPropagation(); previewMedia(media); });
+
   const copyBtn = item.querySelector(".copy-btn");
-  copyBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    utils.copyToClipboard(media.url);
-  });
+  copyBtn.addEventListener("click", (e) => { e.stopPropagation(); utils.copyToClipboard(media.url); });
 
-  // Add event listener for download button
   const downloadBtn = item.querySelector(".download-btn");
-  downloadBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    downloadMedia(media.url, filename);
-  });
+  downloadBtn.addEventListener("click", (e) => { e.stopPropagation(); downloadMedia(media.url, filename); });
 
-  // Add event listener for save button
   const saveBtn = item.querySelector(".save-btn");
-  saveBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    saveMedia(media.url, filename);
-  });
+  saveBtn.addEventListener("click", (e) => { e.stopPropagation(); saveMedia(media.url, filename); });
 
   return item;
 };
@@ -239,19 +336,12 @@ const createSavedMediaItem = (media, index) => {
   const item = document.createElement("li");
   item.className = "media-item saved-item";
 
-  // Determine icon based on media type
   const extension = media.extension || "unknown";
   const isAudio = media.mime && media.mime.includes("audio");
   const isImage = (media.mime && media.mime.includes("image")) || IMAGE_EXTENSIONS.includes(extension.toLowerCase());
-
-  // Format size and date for display
   const size = utils.formatFileSize(media.size);
   const datetime = utils.formatDateTime(media.savedAt || media.timestamp || Date.now());
-
-  // Create shortened URL for display
   const displayUrl = media.url.length > 60 ? media.url.substring(0, 57) + "..." : media.url;
-
-  // Title is either custom title or the default pattern
   const title = media.customTitle || `${isImage ? "Image" : isAudio ? "Audio" : "Video"} ${index + 1}`;
 
   item.innerHTML = `
@@ -268,6 +358,9 @@ const createSavedMediaItem = (media, index) => {
       </div>
     </div>
     <div class="media-actions">
+      <button class="action-btn preview-btn" title="Preview">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+      </button>
       <button class="action-btn copy-btn" title="Copy URL">
         ${ICONS.copy}
       </button>
@@ -280,111 +373,90 @@ const createSavedMediaItem = (media, index) => {
     </div>
   `;
 
-  // Add event listener for copy button
+  const previewBtn = item.querySelector(".preview-btn");
+  previewBtn.addEventListener("click", (e) => { e.stopPropagation(); previewMedia(media); });
+
   const copyBtn = item.querySelector(".copy-btn");
-  copyBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    utils.copyToClipboard(media.url);
-  });
+  copyBtn.addEventListener("click", (e) => { e.stopPropagation(); utils.copyToClipboard(media.url); });
 
-  // Add event listener for download button
   const downloadBtn = item.querySelector(".download-btn");
-  downloadBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    downloadMedia(media.url, media.filename);
-  });
+  downloadBtn.addEventListener("click", (e) => { e.stopPropagation(); downloadMedia(media.url, media.filename); });
 
-  // Add event listener for delete button
   const deleteBtn = item.querySelector(".delete-btn");
-  deleteBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    removeSavedMedia(media.url);
-  });
+  deleteBtn.addEventListener("click", (e) => { e.stopPropagation(); removeSavedMedia(media.url); });
 
   return item;
 };
 
-// Get file type from URL or MIME type
+// ===== FILTER LOGIC =====
+
 const getFileType = (media) => {
   const extension = media.extension?.toLowerCase() || "";
   const mime = media.mime || "";
-
-  // Image types
   if (IMAGE_EXTENSIONS.includes(extension) || mime.includes("image/")) {
     return extension || mime.split("/")[1] || "image";
   }
-
-  // Audio types
   if (AUDIO_EXTENSIONS.includes(extension) || mime.includes("audio/")) {
     return extension || mime.split("/")[1] || "audio";
   }
-
-  // Video types
   return extension || mime.split("/")[1] || "video";
 };
 
-// Check if media matches current filter
+/**
+ * Checks if a media item matches the current filter state
+ * @param {Object} media - The media object
+ * @returns {boolean}
+ */
 const matchesFilter = (media) => {
-  if (activeFilter === "all") return true;
-
   const fileType = getFileType(media);
-  const mime_image = media.mime?.includes("image/");
-  const mime_audio = media.mime?.includes("audio/");
+  const mime = media.mime || "";
+  const isImage = IMAGE_EXTENSIONS.includes(fileType) || mime.includes("image/");
+  const isAudio = AUDIO_EXTENSIONS.includes(fileType) || mime.includes("audio/");
 
-  if (activeFilter === "images" && (IMAGE_EXTENSIONS.includes(fileType) || mime_image)) {
-    return true;
+  if (isImage) {
+    // Empty set = show all images; otherwise only selected extensions
+    return filterState.images.size === 0 || filterState.images.has(fileType);
   }
-  if (activeFilter === "audio" && (AUDIO_EXTENSIONS.includes(fileType) || mime_audio)) {
-    return true;
+  if (isAudio) {
+    return filterState.audio.size === 0 || filterState.audio.has(fileType);
   }
-  if (activeFilter === "video" && !mime_image && !mime_audio && ![...IMAGE_EXTENSIONS, ...AUDIO_EXTENSIONS].includes(fileType)) {
-    return true;
-  }
-
-  return activeFilter === fileType;
+  // Video (default)
+  return filterState.videos.size === 0 || filterState.videos.has(fileType);
 };
 
-// Apply current filter to media list
+/**
+ * Applies the current filter to the media list and updates the UI
+ * @param {Array} medias - All media items for the current tab
+ */
 const applyFilter = (medias) => {
-  const filterSelect = document.getElementById("mediaFilter");
   const filterCount = document.getElementById("filterCount");
   const mediaList = document.getElementById("mediaList");
   const emptyState = document.getElementById("emptyState");
 
-  // Set filter value from select
-  if (filterSelect) {
-    filterSelect.value = activeFilter;
-  }
-
   // Filter medias
   const filteredMedias = medias.filter((media) => matchesFilter(media));
 
-  // Update count
-  if (filterCount) {
-    filterCount.textContent = filteredMedias.length;
-  }
+  // Update category counts on chips
+  updateChipCounts(medias);
 
   // Clear previous list items
   mediaList.innerHTML = "";
 
   if (filteredMedias.length === 0) {
-    // Show empty state with message
     emptyState.style.display = "block";
     mediaList.style.display = "none";
 
     if (medias.length > 0) {
-      // We have medias but none match the filter
       emptyState.innerHTML = `
         <div class="empty-icon">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
           </svg>
         </div>
-        <div>No ${activeFilter !== "all" ? activeFilter : "media"} found on this page.</div>
-        <div style="margin-top: 8px; font-size: 12px">Try a different filter or browse the page to detect more media.</div>
+        <div>No media matches the current filter.</div>
+        <div style="margin-top: 8px; font-size: 12px">Try adjusting the filter or click Reset.</div>
       `;
     } else {
-      // No medias at all
       emptyState.innerHTML = `
         <div class="empty-icon">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -396,11 +468,8 @@ const applyFilter = (medias) => {
       `;
     }
   } else {
-    // Show filtered media list
     emptyState.style.display = "none";
     mediaList.style.display = "block";
-
-    // Add media items to list
     filteredMedias.forEach((media) => {
       const item = createMediaItem(media, medias);
       mediaList.appendChild(item);
@@ -412,40 +481,177 @@ const applyFilter = (medias) => {
   mediaCount.textContent = `${medias.length} medias`;
 };
 
-// Setup filter select options
-const setupFilterOptions = () => {
-  const fileTypeOptions = document.getElementById("fileTypeOptions");
-  if (!fileTypeOptions) return;
+/**
+ * Updates the count badges on each filter chip
+ * @param {Array} medias - All media items
+ */
+const updateChipCounts = (medias) => {
+  let videoCount = 0, imageCount = 0, audioCount = 0;
+  medias.forEach((media) => {
+    const fileType = getFileType(media);
+    const mime = media.mime || "";
+    if (IMAGE_EXTENSIONS.includes(fileType) || mime.includes("image/")) imageCount++;
+    else if (AUDIO_EXTENSIONS.includes(fileType) || mime.includes("audio/")) audioCount++;
+    else videoCount++;
+  });
 
-  // Clear existing options
-  fileTypeOptions.innerHTML = "";
+  const vc = document.querySelector('.chip-count[data-category="videos"]');
+  const ic = document.querySelector('.chip-count[data-category="images"]');
+  const ac = document.querySelector('.chip-count[data-category="audio"]');
+  if (vc) vc.textContent = videoCount;
+  if (ic) ic.textContent = imageCount;
+  if (ac) ac.textContent = audioCount;
+};
 
-  // Add file type options
-  MEDIA_EXTENSIONS.forEach((ext) => {
-    const option = document.createElement("option");
-    option.value = ext;
-    option.textContent = ext.toUpperCase();
-    fileTypeOptions.appendChild(option);
+// ===== FILTER CHIP DROPDOWN SETUP =====
+
+/**
+ * Populates the chip dropdown checkboxes for each category
+ */
+const setupFilterChips = () => {
+  const categories = {
+    videos: VIDEO_EXTENSIONS,
+    images: IMAGE_EXTENSIONS,
+    audio: AUDIO_EXTENSIONS,
+  };
+
+  Object.entries(categories).forEach(([category, extensions]) => {
+    const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"]`);
+    if (!dropdown) return;
+
+    dropdown.innerHTML = "";
+
+    // "Select All" toggle
+    const selectAllLabel = document.createElement("label");
+    selectAllLabel.className = "select-all-label";
+    const selectAllCheckbox = document.createElement("input");
+    selectAllCheckbox.type = "checkbox";
+    selectAllCheckbox.checked = filterState[category].size === 0;
+    selectAllCheckbox.addEventListener("change", () => {
+      if (selectAllCheckbox.checked) {
+        filterState[category].clear(); // empty = show all
+        extensions.forEach((ext) => {
+          const cb = dropdown.querySelector(`input[data-ext="${ext}"]`);
+          if (cb) cb.checked = false;
+        });
+      } else {
+        // Deselecting "all" => select none
+        extensions.forEach((ext) => filterState[category].add(ext));
+        extensions.forEach((ext) => {
+          const cb = dropdown.querySelector(`input[data-ext="${ext}"]`);
+          if (cb) cb.checked = true;
+        });
+      }
+      saveFilterState();
+      updateChipActiveState(category);
+      loadMedias();
+    });
+    selectAllLabel.appendChild(selectAllCheckbox);
+    selectAllLabel.appendChild(document.createTextNode("Show All"));
+    dropdown.appendChild(selectAllLabel);
+
+    // Individual extension checkboxes
+    extensions.forEach((ext) => {
+      const label = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.ext = ext;
+      checkbox.checked = filterState[category].has(ext);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) {
+          filterState[category].add(ext);
+        } else {
+          filterState[category].delete(ext);
+        }
+        // Update "Select All" state
+        selectAllCheckbox.checked = filterState[category].size === 0;
+        saveFilterState();
+        updateChipActiveState(category);
+        loadMedias();
+      });
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(ext.toUpperCase()));
+      dropdown.appendChild(label);
+    });
   });
 };
+
+/**
+ * Updates the active/inactive visual state of a chip button
+ * @param {string} category - The category name
+ */
+const updateChipActiveState = (category) => {
+  const chipBtn = document.querySelector(`.chip-btn[data-category="${category}"]`);
+  if (!chipBtn) return;
+
+  // Chip is "active" (highlighted) when specific filters are selected
+  if (filterState[category].size > 0) {
+    chipBtn.classList.add("active");
+  } else {
+    chipBtn.classList.remove("active");
+  }
+};
+
+/**
+ * Updates all chip active states to match current filterState
+ */
+const updateFilterUI = () => {
+  ["videos", "images", "audio"].forEach((category) => {
+    updateChipActiveState(category);
+    // Update checkboxes in dropdown
+    const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"]`);
+    if (!dropdown) return;
+
+    const selectAllCb = dropdown.querySelector(".select-all-label input");
+    if (selectAllCb) selectAllCb.checked = filterState[category].size === 0;
+
+    const extensions = category === "videos" ? VIDEO_EXTENSIONS : category === "images" ? IMAGE_EXTENSIONS : AUDIO_EXTENSIONS;
+    extensions.forEach((ext) => {
+      const cb = dropdown.querySelector(`input[data-ext="${ext}"]`);
+      if (cb) cb.checked = filterState[category].has(ext);
+    });
+  });
+};
+
+/**
+ * Toggles a chip dropdown open/closed
+ * @param {string} category - The category to toggle
+ */
+const toggleChipDropdown = (category) => {
+  // Close any other open dropdown
+  if (openDropdown && openDropdown !== category) {
+    const prevDropdown = document.querySelector(`.chip-dropdown[data-category="${openDropdown}"]`);
+    const prevBtn = document.querySelector(`.chip-btn[data-category="${openDropdown}"]`);
+    if (prevDropdown) prevDropdown.classList.remove("open");
+    if (prevBtn) prevBtn.classList.remove("open");
+  }
+
+  const dropdown = document.querySelector(`.chip-dropdown[data-category="${category}"]`);
+  const chipBtn = document.querySelector(`.chip-btn[data-category="${category}"]`);
+
+  if (dropdown && chipBtn) {
+    const isOpen = dropdown.classList.contains("open");
+    dropdown.classList.toggle("open");
+    chipBtn.classList.toggle("open");
+    openDropdown = isOpen ? null : category;
+  }
+};
+
+// ===== DATA LOADING =====
 
 // Load medias for current tab
 const loadMedias = () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs.length === 0) return;
-
     const currentTab = tabs[0];
     const tabId = currentTab.id;
 
-    // Request medias from background script
     chrome.runtime.sendMessage({ action: ACTIONS.GET_MEDIAS, tabId: tabId }, (response) => {
       if (chrome.runtime.lastError) {
         console.error("Error getting medias:", chrome.runtime.lastError);
         return;
       }
-
       if (response && response.medias) {
-        // Get the media array for the current tab ID
         const tabMedias = response.medias[tabId] || [];
         applyFilter(tabMedias);
       } else {
@@ -461,11 +667,8 @@ const loadSavedMedia = () => {
   const savedEmptyState = document.getElementById("savedEmptyState");
   const savedMediaCount = document.getElementById("savedMediaCount");
 
-  // Get saved media from storage
   chrome.storage.local.get([STORAGE_KEYS.SAVED_MEDIA], (result) => {
     const savedMedia = result.savedMedia || [];
-
-    // Update UI based on saved media count
     if (savedMedia.length === 0) {
       savedEmptyState.style.display = "block";
       savedMediaList.style.display = "none";
@@ -474,11 +677,7 @@ const loadSavedMedia = () => {
       savedEmptyState.style.display = "none";
       savedMediaList.style.display = "block";
       savedMediaCount.textContent = `${savedMedia.length} saved`;
-
-      // Clear previous list
       savedMediaList.innerHTML = "";
-
-      // Add each saved item to the list
       savedMedia.forEach((media, index) => {
         const item = createSavedMediaItem(media, index);
         savedMediaList.appendChild(item);
@@ -501,15 +700,12 @@ const clearSavedMedia = () => {
 const showInPage = () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs.length === 0) return;
-
     const currentTab = tabs[0];
     chrome.tabs.sendMessage(currentTab.id, { action: ACTIONS.SHOW_PANEL }, (response) => {
       if (chrome.runtime.lastError) {
         console.error("Error showing panel:", chrome.runtime.lastError);
         return;
       }
-
-      // Close popup
       window.close();
     });
   });
@@ -519,17 +715,13 @@ const showInPage = () => {
 const rescanPage = () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs.length === 0) return;
-
     const currentTab = tabs[0];
     chrome.tabs.sendMessage(currentTab.id, { action: ACTIONS.RESCAN_PAGE }, (response) => {
       if (chrome.runtime.lastError) {
         console.error("Error rescanning page:", chrome.runtime.lastError);
         return;
       }
-
       ui.showNotification("Scanning page for media...");
-
-      // Reload medias after a short delay
       setTimeout(loadMedias, 1000);
     });
   });
@@ -538,28 +730,14 @@ const rescanPage = () => {
 // Switch between tabs
 const switchTab = (tab) => {
   activeTab = tab;
-
-  // Update tab buttons
   const tabButtons = document.querySelectorAll(".tab-btn");
   tabButtons.forEach((btn) => {
-    if (btn.dataset.tab === tab) {
-      btn.classList.add("active");
-    } else {
-      btn.classList.remove("active");
-    }
+    btn.classList.toggle("active", btn.dataset.tab === tab);
   });
-
-  // Update tab content
   const tabContents = document.querySelectorAll(".tab-content");
   tabContents.forEach((content) => {
-    if (content.dataset.tab === tab) {
-      content.classList.add("active");
-    } else {
-      content.classList.remove("active");
-    }
+    content.classList.toggle("active", content.dataset.tab === tab);
   });
-
-  // Load appropriate content based on active tab
   if (tab === "saved") {
     loadSavedMedia();
   } else {
@@ -567,18 +745,39 @@ const switchTab = (tab) => {
   }
 };
 
-// Initialize popup
-document.addEventListener("DOMContentLoaded", () => {
-  // Setup filter options
-  setupFilterOptions();
+// ===== INITIALIZATION =====
 
-  // Setup event listeners
-  const filterSelect = document.getElementById("mediaFilter");
-  if (filterSelect) {
-    filterSelect.addEventListener("change", () => {
-      activeFilter = filterSelect.value;
-      loadMedias();
+document.addEventListener("DOMContentLoaded", () => {
+  // Load saved filter state, then setup UI
+  loadFilterState().then(() => {
+    setupFilterChips();
+    updateFilterUI();
+  });
+
+  // Chip button click handlers
+  document.querySelectorAll(".chip-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const category = btn.dataset.category;
+      toggleChipDropdown(category);
     });
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener("click", (e) => {
+    if (openDropdown && !e.target.closest(".filter-chip")) {
+      const dropdown = document.querySelector(`.chip-dropdown[data-category="${openDropdown}"]`);
+      const chipBtn = document.querySelector(`.chip-btn[data-category="${openDropdown}"]`);
+      if (dropdown) dropdown.classList.remove("open");
+      if (chipBtn) chipBtn.classList.remove("open");
+      openDropdown = null;
+    }
+  });
+
+  // Reset filters button
+  const resetBtn = document.getElementById("resetFiltersBtn");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", resetFilters);
   }
 
   // Page action buttons
@@ -586,7 +785,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (showInPageBtn) {
     showInPageBtn.addEventListener("click", showInPage);
   }
-
   const refreshBtn = document.getElementById("refreshBtn");
   if (refreshBtn) {
     refreshBtn.addEventListener("click", rescanPage);
@@ -595,9 +793,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Tab switching
   const tabButtons = document.querySelectorAll(".tab-btn");
   tabButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      switchTab(btn.dataset.tab);
-    });
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 
   // Clear saved media button
@@ -615,21 +811,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (confirmSaveBtn) {
     confirmSaveBtn.addEventListener("click", () => {
       const customFilename = customFilenameInput.value.trim();
-
       if (customFilename) {
-        // Get extension from suggested filename
         const extension = suggestedFilename.split(".").pop();
-
-        // Add extension if not present
         const finalFilename = customFilename.includes(".") ? customFilename : `${customFilename}.${extension}`;
-
-        // Get current timestamp
         const savedAt = Date.now();
 
-        // Find the original media object to get its size and mime type
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs.length === 0) return;
-
           const currentTab = tabs[0];
           const tabId = currentTab.id;
 
@@ -638,26 +826,19 @@ document.addEventListener("DOMContentLoaded", () => {
               console.error("Error getting media data:", chrome.runtime.lastError);
               return;
             }
-
             if (response && response.medias) {
               const tabMedias = response.medias[tabId] || [];
               const originalMedia = tabMedias.find((m) => m.url === currentSaveUrl);
-
-              // Create media object for saved list with all needed properties
               const media = {
                 url: currentSaveUrl,
                 filename: finalFilename,
-                customTitle: customFilename.split(".")[0], // Remove extension for title
+                customTitle: customFilename.split(".")[0],
                 extension: extension,
                 savedAt: savedAt,
                 size: originalMedia ? originalMedia.size : 0,
                 mime: originalMedia ? originalMedia.mime : "",
               };
-
-              // Add to saved media
               addToSavedMedia(media);
-
-              // Close modal
               saveModal.classList.remove("active");
             }
           });
@@ -674,14 +855,22 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Handle Enter key in the filename input
   if (customFilenameInput) {
     customFilenameInput.addEventListener("keyup", (e) => {
-      if (e.key === "Enter") {
-        confirmSaveBtn.click();
-      } else if (e.key === "Escape") {
-        cancelSaveBtn.click();
-      }
+      if (e.key === "Enter") confirmSaveBtn.click();
+      else if (e.key === "Escape") cancelSaveBtn.click();
+    });
+  }
+
+  // Preview modal close
+  const previewCloseBtn = document.getElementById("previewCloseBtn");
+  if (previewCloseBtn) {
+    previewCloseBtn.addEventListener("click", closePreview);
+  }
+  const previewModal = document.getElementById("previewModal");
+  if (previewModal) {
+    previewModal.addEventListener("click", (e) => {
+      if (e.target === previewModal) closePreview();
     });
   }
 

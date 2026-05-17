@@ -27,6 +27,7 @@ export const DEFAULT_TAB = "detected";
 // Storage keys
 export const STORAGE_KEYS = {
   SAVED_MEDIA: "savedMedia",
+  FILTER_STATE: "filterState",
 };
 
 // Message actions

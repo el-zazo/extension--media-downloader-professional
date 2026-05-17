@@ -23,24 +23,44 @@
 
       <!-- ===== DETECTED MEDIA TAB ===== -->
       <div class="tab-content active" data-tab="detected">
-        <!-- Filter Bar -->
+        <!-- Multi-Filter Bar -->
         <div class="filter-bar">
-          <div class="filter-label">Filter:</div>
-          <select id="mediaFilter" class="filter-select">
-            <optgroup label="Categories">
-              <option value="all">All Media</option>
-              <option value="images">All Images</option>
-              <option value="audio">All Audio</option>
-              <option value="video">All Videos</option>
-            </optgroup>
-            <optgroup label="File Types" id="fileTypeOptions">
-              <!-- File type options will be added dynamically -->
-            </optgroup>
-          </select>
-          <div class="media-counter">
-            <span id="filterCount">0</span>
-            <span>medias found</span>
+          <div class="filter-chips">
+            <div class="filter-chip" data-category="videos">
+              <button class="chip-btn" data-category="videos">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="chip-icon"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14v-4z" /><rect x="3" y="6" width="12" height="12" rx="2" stroke-width="2" /></svg>
+                Videos
+                <span class="chip-count" data-category="videos">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="chip-arrow"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <div class="chip-dropdown" data-category="videos">
+                <!-- Video sub-type checkboxes populated dynamically -->
+              </div>
+            </div>
+            <div class="filter-chip" data-category="images">
+              <button class="chip-btn" data-category="images">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="chip-icon"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                Images
+                <span class="chip-count" data-category="images">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="chip-arrow"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <div class="chip-dropdown" data-category="images">
+                <!-- Image sub-type checkboxes populated dynamically -->
+              </div>
+            </div>
+            <div class="filter-chip" data-category="audio">
+              <button class="chip-btn" data-category="audio">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="chip-icon"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                Audio
+                <span class="chip-count" data-category="audio">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="chip-arrow"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <div class="chip-dropdown" data-category="audio">
+                <!-- Audio sub-type checkboxes populated dynamically -->
+              </div>
+            </div>
           </div>
+          <button class="reset-btn" id="resetFiltersBtn" title="Reset all filters">Reset</button>
         </div>
 
         <!-- Media Content -->
@@ -123,6 +143,24 @@
         <div class="save-modal-actions">
           <button id="cancelSaveBtn" class="modal-btn cancel-btn">Cancel</button>
           <button id="confirmSaveBtn" class="modal-btn save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for media preview/playback -->
+    <div class="preview-modal" id="previewModal">
+      <div class="preview-modal-content">
+        <div class="preview-header">
+          <h3 id="previewTitle">Media Preview</h3>
+          <button class="preview-close-btn" id="previewCloseBtn">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="preview-body" id="previewBody">
+          <!-- Video/Audio/Image element will be injected here -->
+        </div>
+        <div class="preview-footer">
+          <a class="preview-open-link" id="previewOpenLink" href="#" target="_blank">Open in new tab</a>
         </div>
       </div>
     </div>

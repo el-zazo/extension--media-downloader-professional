@@ -1,23 +1,6 @@
 /**
  * Media Downloader Professional - Content Styles
- * 
- * This stylesheet defines the visual appearance of the media panel UI
- * that is injected into web pages by the content script.
- * 
- * Table of Contents:
- * 1. Tooltip Styles
- * 2. Custom Scrollbar
- * 3. Animations
- * 4. Panel Structure
- * 5. Panel Header
- * 6. Panel Content
- * 7. Media Items
- * 8. Filter Bar
- * 9. Footer
- * 10. Responsive Adjustments
- * 
- * @author Media Downloader Professional Team
- * @version 1.0.0
+ * Visual appearance of the media panel UI injected into web pages.
  */
 
 /* ==============================
@@ -28,7 +11,6 @@
   position: relative;
   cursor: pointer;
 }
-
 [data-tooltip]:before,
 [data-tooltip]:after {
   visibility: hidden;
@@ -38,7 +20,6 @@
   position: absolute;
   z-index: 2147483647;
 }
-
 [data-tooltip]:before {
   content: attr(data-tooltip);
   padding: 6px 10px;
@@ -55,7 +36,6 @@
   transform: translateX(-50%);
   white-space: nowrap;
 }
-
 [data-tooltip]:after {
   content: "";
   position: absolute;
@@ -67,7 +47,6 @@
   border-style: solid;
   border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
 }
-
 [data-tooltip]:hover:before,
 [data-tooltip]:hover:after {
   visibility: visible;
@@ -78,51 +57,22 @@
  * 2. CUSTOM SCROLLBAR
  * ============================== */
 
-.vdp-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.vdp-content::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-.vdp-content::-webkit-scrollbar-thumb {
-  background: #ddd;
-  border-radius: 4px;
-}
-
-.vdp-content::-webkit-scrollbar-thumb:hover {
-  background: #ccc;
-}
+.vdp-content::-webkit-scrollbar { width: 8px; }
+.vdp-content::-webkit-scrollbar-track { background: #1a1a1a; border-radius: 4px; }
+.vdp-content::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+.vdp-content::-webkit-scrollbar-thumb:hover { background: #444; }
 
 /* ==============================
  * 3. ANIMATIONS
  * ============================== */
 
-/* Animation for copied notification */
 @keyframes fadeInOut {
-  0% {
-    opacity: 0;
-    transform: translateY(10px) translateX(-50%);
-  }
-  10% {
-    opacity: 1;
-    transform: translateY(0) translateX(-50%);
-  }
-  90% {
-    opacity: 1;
-    transform: translateY(0) translateX(-50%);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-10px) translateX(-50%);
-  }
+  0%   { opacity: 0; transform: translateY(10px) translateX(-50%); }
+  10%  { opacity: 1; transform: translateY(0) translateX(-50%); }
+  90%  { opacity: 1; transform: translateY(0) translateX(-50%); }
+  100% { opacity: 0; transform: translateY(-10px) translateX(-50%); }
 }
-
-.vdp-copied {
-  animation: fadeInOut 2s ease-in-out;
-}
+.vdp-copied { animation: fadeInOut 2s ease-in-out; }
 
 /* ==============================
  * 4. PANEL STRUCTURE
@@ -132,8 +82,8 @@
   position: fixed;
   top: 20px;
   right: 20px;
-  width: 380px;
-  max-height: 500px;
+  width: 400px;
+  max-height: 520px;
   background: #222;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   border-radius: 8px;
@@ -147,20 +97,10 @@
   text-align: start;
   direction: ltr;
   margin: 0;
-  min-width: 300px;
+  min-width: 320px;
 }
-
-.vdp-panel.vdp-dragging {
-  transition: none;
-  opacity: 0.9;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-  cursor: grabbing;
-}
-
-.vdp-panel.collapsed {
-  height: 48px;
-  overflow: hidden;
-}
+.vdp-panel.vdp-dragging { transition: none; opacity: 0.9; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); cursor: grabbing; }
+.vdp-panel.collapsed { height: 48px; overflow: hidden; }
 
 /* ==============================
  * 5. PANEL HEADER
@@ -177,23 +117,8 @@
   cursor: move;
   user-select: none;
 }
-
-.vdp-header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.vdp-header-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.vdp-controls {
-  display: flex;
-  gap: 8px;
-}
-
+.vdp-header-title { display: flex; align-items: center; gap: 8px; }
+.vdp-controls { display: flex; gap: 8px; }
 .vdp-btn {
   background: none;
   border: none;
@@ -207,15 +132,8 @@
   transition: transform 0.2s;
   padding: 0;
 }
-
-.vdp-btn:hover {
-  transform: scale(1.2);
-}
-
-.vdp-btn svg {
-  width: 18px;
-  height: 18px;
-}
+.vdp-btn:hover { transform: scale(1.2); }
+.vdp-btn svg { width: 18px; height: 18px; }
 
 /* ==============================
  * 6. PANEL CONTENT
@@ -224,27 +142,17 @@
 .vdp-content {
   overflow-y: auto;
   flex: 1;
-  max-height: calc(500px - 48px - 41px - 44px);
+  max-height: calc(520px - 48px - 41px - 44px);
   padding: 0;
   background: #222;
 }
-
-.vdp-empty {
-  padding: 20px;
-  text-align: center;
-  color: #999;
-}
+.vdp-empty { padding: 20px; text-align: center; color: #999; }
 
 /* ==============================
  * 7. MEDIA ITEMS
  * ============================== */
 
-.vdp-media-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
+.vdp-media-list { list-style: none; margin: 0; padding: 0; }
 .vdp-media-item {
   padding: 12px 16px;
   border-bottom: 1px solid #333;
@@ -253,11 +161,7 @@
   gap: 12px;
   transition: background 0.2s;
 }
-
-.vdp-media-item:hover {
-  background: #333;
-}
-
+.vdp-media-item:hover { background: #333; }
 .vdp-media-icon {
   width: 36px;
   height: 36px;
@@ -267,42 +171,11 @@
   color: #0047ab;
   flex-shrink: 0;
 }
-
-.vdp-media-icon svg {
-  width: 28px;
-  height: 28px;
-}
-
-.vdp-media-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.vdp-media-title {
-  font-weight: 600;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.vdp-media-url {
-  color: #aaa;
-  font-size: 12px;
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.vdp-media-meta {
-  display: flex;
-  column-gap: 8px;
-  font-size: 11px;
-  color: #999;
-  align-items: center;
-}
-
+.vdp-media-icon svg { width: 28px; height: 28px; }
+.vdp-media-info { flex: 1; min-width: 0; }
+.vdp-media-title { font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vdp-media-url { color: #aaa; font-size: 12px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vdp-media-meta { display: flex; column-gap: 8px; font-size: 11px; color: #999; align-items: center; }
 .vdp-media-format {
   background: rgba(0, 71, 171, 0.2);
   color: #0047ab;
@@ -313,21 +186,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.vdp-media-size {
-  flex: none;
-}
-
-.vdp-media-time {
-  flex: none;
-}
-
-.vdp-media-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
+.vdp-media-size { flex: none; }
+.vdp-media-time { flex: none; }
+.vdp-media-actions { display: flex; align-items: center; gap: 4px; }
 .vdp-action-btn {
   background: none;
   border: none;
@@ -342,16 +203,8 @@
   padding: 0;
   border-radius: 4px;
 }
-
-.vdp-action-btn:hover {
-  background: #444;
-  color: white;
-}
-
-.vdp-action-btn svg {
-  width: 16px;
-  height: 16px;
-}
+.vdp-action-btn:hover { background: #444; color: white; }
+.vdp-action-btn svg { width: 16px; height: 16px; }
 
 .vdp-copied {
   position: fixed;
@@ -367,89 +220,114 @@
   opacity: 0;
   transition: opacity 0.3s;
 }
-
-.vdp-copied.show {
-  opacity: 1;
-}
-
-.vdp-badge {
-  position: absolute;
-  top: 0px;
-  right: 0px;
-  background: #ff5722;
-  color: white;
-  font-size: 12px;
-  width: 20px;
-  height: 20px;
-  border-radius: 17%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Additional scrollbar styling for dark theme */
-.vdp-content::-webkit-scrollbar-track {
-  background: #1a1a1a;
-}
-
-.vdp-content::-webkit-scrollbar-thumb {
-  background: #333;
-}
-
-.vdp-content::-webkit-scrollbar-thumb:hover {
-  background: #444;
-}
+.vdp-copied.show { opacity: 1; }
 
 /* ==============================
- * 8. FILTER BAR
+ * 8. FILTER CHIP BAR
  * ============================== */
 
 .vdp-filter-bar {
   display: flex;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: #2a2a2a;
   border-bottom: 1px solid #333;
-  gap: 12px;
   align-items: center;
+  gap: 8px;
   user-select: none;
+  overflow: visible;
 }
 
-.vdp-filter-label {
-  color: #ddd;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.vdp-filter-select {
-  background: #333;
-  color: #fff;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 6px 8px;
-  font-size: 13px;
+.vdp-chip-container {
+  display: flex;
+  gap: 6px;
   flex: 1;
+  overflow: visible;
+}
+
+.vdp-chip { position: relative; }
+
+.vdp-chip-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 16px;
   cursor: pointer;
-  outline: none;
-  transition: border-color 0.2s;
-  min-width: 120px;
-  max-width: 180px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+  font-family: inherit;
 }
-
-.vdp-filter-select:hover {
-  border-color: #555;
+.vdp-chip-btn:hover { background: #3a3a3a; border-color: #555; color: #fff; }
+.vdp-chip-btn.active { background: #0047ab; border-color: #0056d6; color: #fff; }
+.vdp-chip-icon { width: 14px; height: 14px; display: inline-flex; align-items: center; }
+.vdp-chip-icon svg { width: 14px; height: 14px; }
+.vdp-chip-count {
+  background: rgba(255,255,255,0.2);
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 10px;
+  min-width: 16px;
+  text-align: center;
 }
+.vdp-chip-btn.active .vdp-chip-count { background: rgba(255,255,255,0.3); }
+.vdp-chip-arrow { font-size: 10px; transition: transform 0.2s; display: inline-block; }
+.vdp-chip-btn.open .vdp-chip-arrow { transform: rotate(180deg); }
 
-.vdp-filter-select:focus {
-  border-color: #0047ab;
-  box-shadow: 0 0 0 1px rgba(0, 71, 171, 0.3);
+.vdp-chip-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 6px 0;
+  min-width: 140px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
-
-.vdp-filter-select option,
-.vdp-filter-select optgroup {
-  background-color: #333;
+.vdp-chip-dropdown.open { display: block; }
+.vdp-chip-dropdown label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ccc;
+  transition: background 0.15s;
+}
+.vdp-chip-dropdown label:hover { background: #3a3a3a; }
+.vdp-chip-dropdown input[type="checkbox"] { accent-color: #0047ab; width: 14px; height: 14px; cursor: pointer; }
+.vdp-select-all-label {
+  border-bottom: 1px solid #444;
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+  font-weight: 600;
   color: #fff;
 }
+
+.vdp-reset-btn {
+  padding: 5px 10px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #444;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.vdp-reset-btn:hover { background: #444; color: #fff; border-color: #555; }
 
 .vdp-media-counter {
   margin-left: auto;
@@ -457,34 +335,98 @@
   font-size: 12px;
   white-space: nowrap;
 }
-
-.vdp-counter-count {
-  font-weight: bold;
-  color: #fff;
-}
+.vdp-counter-count { font-weight: bold; color: #fff; }
 
 /* ==============================
- * 10. RESPONSIVE ADJUSTMENTS
+ * 9. PREVIEW OVERLAY
  * ============================== */
 
-@media (max-width: 480px) {
-  .vdp-filter-bar {
-    flex-wrap: wrap;
-  }
-
-  .vdp-filter-select {
-    max-width: none;
-  }
-
-  .vdp-media-counter {
-    margin-left: 0;
-    width: 100%;
-    margin-top: 5px;
-  }
+.vdp-preview-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
+.vdp-preview-container {
+  background: #222;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.vdp-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+}
+.vdp-preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #eee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.vdp-preview-close {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.vdp-preview-close:hover { color: #fff; }
+.vdp-preview-close svg { width: 18px; height: 18px; }
+
+.vdp-preview-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  min-height: 150px;
+  max-height: 400px;
+  overflow: hidden;
+}
+.vdp-preview-body video { width: 100%; max-height: 400px; outline: none; }
+.vdp-preview-body audio { padding: 30px; width: 90%; }
+.vdp-preview-body img { max-width: 100%; max-height: 400px; object-fit: contain; }
+
+.vdp-preview-footer {
+  padding: 8px 14px;
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+  text-align: center;
+}
+.vdp-preview-link {
+  color: #4a9cf7;
+  text-decoration: none;
+  font-size: 12px;
+}
+.vdp-preview-link:hover { text-decoration: underline; }
+
 /* ==============================
- * 9. FOOTER
+ * 10. FOOTER
  * ============================== */
 
 .vdp-footer {
@@ -497,7 +439,15 @@
   font-size: 14px;
   color: #ccc;
 }
+.vdp-media-count { font-weight: 500; }
 
-.vdp-media-count {
-  font-weight: 500;
+/* ==============================
+ * 11. RESPONSIVE ADJUSTMENTS
+ * ============================== */
+
+@media (max-width: 480px) {
+  .vdp-filter-bar { flex-wrap: wrap; }
+  .vdp-chip-container { flex-wrap: wrap; }
+  .vdp-media-counter { margin-left: 0; width: 100%; margin-top: 5px; }
+  .vdp-panel { width: 320px; min-width: 280px; }
 }
