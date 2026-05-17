@@ -1232,29 +1232,13 @@ const handleShowPanelMessage = (sendResponse) => {
  */
 const handleRescanPageMessage = (sendResponse) => {
   try {
-    // Clear local detected medias and recreate panel
+    // Clear detected medias and recreate panel
     detectedMedias.clear();
 
     if (mediaPanel) {
       mediaPanel.remove();
       mediaPanel = null;
     }
-
-    // Also clear the background script's dedup cache for this tab
-    // so URLs can be re-detected during the rescan
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs.length > 0) {
-        const tabId = tabs[0].id;
-        chrome.runtime.sendMessage(
-          { action: "rescanTab", tabId: tabId },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              console.error("Error sending rescanTab message:", chrome.runtime.lastError);
-            }
-          }
-        );
-      }
-    });
 
     initialize();
     sendResponse({ success: true });
